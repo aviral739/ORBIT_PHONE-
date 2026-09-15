@@ -1,0 +1,13 @@
+{
+  "drop_confidence": 0.60,
+  "compress_similarity": 0.82,
+  "reason_importance": 0.70,
+  "timeouts": {
+    "default": 3000,
+    "model_inference": 5000
+  },
+  "rate_limits": {
+    "events_per_minute": 100,
+    "db_writes_per_second": 50
+  }
+}

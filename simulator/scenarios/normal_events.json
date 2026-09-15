@@ -1,0 +1,12 @@
+[
+  { "id": "evt_001", "type": "notification", "content": "Meeting in 10 mins" },
+  { "id": "evt_002", "type": "chat", "content": "Are we still on for lunch?" },
+  { "id": "evt_003", "type": "notification", "content": "New email from Boss" },
+  { "id": "evt_004", "type": "chat", "content": "Can you review my PR?" },
+  { "id": "evt_005", "type": "notification", "content": "System update available" },
+  { "id": "evt_006", "type": "chat", "content": "Thanks!" },
+  { "id": "evt_007", "type": "notification", "content": "Battery low" },
+  { "id": "evt_008", "type": "chat", "content": "See you tomorrow" },
+  { "id": "evt_009", "type": "notification", "content": "Daily report generated" },
+  { "id": "evt_010", "type": "chat", "content": "Ok." }
+]
