@@ -5,10 +5,7 @@ import java.util.UUID
 // Placeholder for kotlinx.serialization.Serializable (since Gradle is not configured)
 annotation class Serializable
 
-@Serializable
-data class Deadline(
-    val targetTime: Long?
-)
+
 
 @Serializable
 data class Commitment(

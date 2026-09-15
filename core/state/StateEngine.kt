@@ -29,7 +29,14 @@ class StateEngine {
             val newCommitment = Commitment(
                 id = newId,
                 taskDescription = intent.description,
-                deadline = Deadline(intent.detectedTime),
+                deadline = intent.detectedTime?.let {
+                    Deadline(
+                        originalTime = it,
+                        newTime = null,
+                        confidence = intent.confidence,
+                        sourceEvidenceIds = listOf(intent.sourceId)
+                    )
+                },
                 sourceEvidenceIds = mutableListOf(intent.sourceId),
                 confidence = intent.confidence
             )
@@ -40,7 +47,8 @@ class StateEngine {
         val existingCommitment = activeCommitments[intent.matchedTaskId]!!
 
         // ACCUMULATE: If task exists AND detectedTime matches existing deadline
-        if (existingCommitment.deadline.targetTime == intent.detectedTime) {
+        val currentDeadlineTime = existingCommitment.deadline?.newTime ?: existingCommitment.deadline?.originalTime
+        if (currentDeadlineTime == intent.detectedTime) {
             existingCommitment.sourceEvidenceIds.add(intent.sourceId)
             existingCommitment.confidence = (existingCommitment.confidence + intent.confidence) / 2.0f
             return existingCommitment
@@ -50,7 +58,7 @@ class StateEngine {
             return Conflict(
                 existingCommitmentId = existingCommitment.id,
                 newDescription = intent.description,
-                message = "Time conflict detected: existing deadline is ${existingCommitment.deadline.targetTime}, new intent time is ${intent.detectedTime}"
+                message = "Time conflict detected: existing deadline is $currentDeadlineTime, new intent time is ${intent.detectedTime}"
             )
         }
     }
