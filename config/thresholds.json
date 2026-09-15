@@ -1,61 +1,13 @@
 {
-  "_comment": "ORBIT multi-domain triage thresholds — consumed by DecisionEngine.kt and EventSimulator.py",
-
-  "global": {
-    "drop_confidence_ceiling":      0.55,
-    "compress_similarity_threshold": 0.78,
-    "queue_urgency_ceiling":        0.65,
-    "reason_escalation_threshold":  0.70
-  },
-
-  "communication": {
-    "_comment": "Parameters for chat-notification handling and QuickReplyEngine",
-    "auto_reply_confidence_min":    0.72,
-    "spam_filter_threshold":        0.40,
-    "chat_packages": [
-      "com.whatsapp",
-      "com.whatsapp.w4b",
-      "com.slack",
-      "com.microsoft.teams",
-      "com.google.android.apps.messaging",
-      "org.telegram.messenger",
-      "com.discord"
-    ]
-  },
-
-  "tasks": {
-    "_comment": "Priority boundary scores used when routing text to TaskDao",
-    "p0_urgency_min": 0.85,
-    "p1_urgency_min": 0.65,
-    "p2_urgency_min": 0.00,
-    "due_date_lookahead_hours": 24
-  },
-
-  "knowledge": {
-    "_comment": "Filters for KnowledgeDao ingestion via VisionOcrAnalyzer",
-    "ocr_character_minimum":   40,
-    "min_word_count":           6,
-    "max_snippet_chars":      2048,
-    "retention_days":           90
-  },
-
-  "bridge": {
-    "_comment": "Desktop OfficeKitBridge / orbit_daemon.py timing parameters",
-    "clipboard_poll_interval_ms":  800,
-    "request_timeout_ms":        10000,
-    "max_retry_attempts":             3,
-    "retry_backoff_ms":            2000
-  },
-
+  "drop_confidence": 0.60,
+  "compress_similarity": 0.82,
+  "reason_importance": 0.70,
   "timeouts": {
-    "default_ms":          3000,
-    "model_inference_ms":  5000,
-    "db_write_ms":          500
+    "default": 3000,
+    "model_inference": 5000
   },
-
   "rate_limits": {
-    "events_per_minute":      100,
-    "db_writes_per_second":    50,
-    "quick_replies_per_min":   30
+    "events_per_minute": 100,
+    "db_writes_per_second": 50
   }
 }

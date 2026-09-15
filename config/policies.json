@@ -1,93 +1,16 @@
 {
-  "_comment": "ORBIT governance policies — defines execution rules, confirmation requirements, and undo windows per tier",
-
   "governance_tiers": {
-
     "SAFE": {
-      "_comment": "Fully automatic — no user confirmation required. Low-risk, read-only or ambient actions.",
-      "requires_confirmation": false,
-      "audit_logged":          true,
-      "undo_window_ms":        5000,
-      "actions": [
-        "log_event",
-        "generate_quick_reply",
-        "store_ocr_snippet",
-        "store_audio_memo",
-        "compress_duplicate_event",
-        "drop_low_confidence_event",
-        "read_clipboard"
-      ],
-      "domain_rules": {
-        "communication": {
-          "allow_auto_reply":   true,
-          "reply_max_chars":  160
-        },
-        "knowledge": {
-          "allow_ambient_ocr_store": true
-        }
-      }
+      "actions": ["compress", "drop", "notify"],
+      "undo_window_ms": 5000
     },
-
     "REVERSIBLE": {
-      "_comment": "Auto-executed but audit-logged. User can undo within the undo window.",
-      "requires_confirmation": false,
-      "audit_logged":          true,
-      "undo_window_ms":       30000,
-      "actions": [
-        "create_task",
-        "update_task_priority",
-        "set_local_alarm",
-        "write_clipboard_escalation",
-        "store_commitment",
-        "reschedule_commitment",
-        "toggle_dnd"
-      ],
-      "domain_rules": {
-        "tasks": {
-          "allow_auto_create":    true,
-          "max_auto_priority":   "P1"
-        },
-        "bridge": {
-          "allow_clipboard_write": true,
-          "max_payload_bytes":  4096
-        },
-        "communication": {
-          "allow_alarm_set": true
-        }
-      }
+      "actions": ["delay", "summarize"],
+      "undo_window_ms": 30000
     },
-
     "SENSITIVE": {
-      "_comment": "Requires explicit user confirmation before execution. High-risk or destructive actions.",
-      "requires_confirmation": true,
-      "audit_logged":          true,
-      "undo_window_ms":            0,
-      "confirmation_timeout_ms": 15000,
-      "actions": [
-        "cancel_calendar_event",
-        "delete_task",
-        "delete_commitment",
-        "send_sensitive_reply",
-        "purge_knowledge_snippets",
-        "escalate_to_desktop_solver"
-      ],
-      "domain_rules": {
-        "tasks": {
-          "allow_auto_delete":  false,
-          "require_pin":        false
-        },
-        "communication": {
-          "allow_sensitive_send": false,
-          "whitelist_packages": ["com.whatsapp", "com.slack"]
-        },
-        "bridge": {
-          "allow_ollama_escalation": true,
-          "max_escalation_payload_bytes": 8192
-        }
-      }
+      "actions": ["alert_only"],
+      "undo_window_ms": 0
     }
-  },
-
-  "default_tier": "SAFE",
-  "audit_retention_days": 30
+  }
 }
