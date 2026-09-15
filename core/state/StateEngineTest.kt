@@ -140,7 +140,8 @@ class StateEngineTest {
 
         val secondResult = engine.processIntent(intent2)
         // Since both have no deadline, they should not automatically merge.
-        assertTrue(secondResult is StateResult.ConflictDetected)
+        assertTrue(secondResult is StateResult.Unresolved)
+        assertTrue((secondResult as StateResult.Unresolved).reason.contains("Cannot automatically merge"))
     }
 
     @Test
@@ -157,5 +158,55 @@ class StateEngineTest {
         val result = engine.processIntent(intent)
         assertTrue(result is StateResult.Error)
         assertTrue((result as StateResult.Error).message.contains("Unknown matchedTaskId"))
+    }
+
+    @Test
+    fun `test state engine generates conflict on null vs non-null deadlines`() {
+        val engine = StateEngine()
+        val intent1 = EventIntent(
+            matchedTaskId = null,
+            description = "Buy milk",
+            detectedTime = null,
+            confidence = 0.8f,
+            sourceId = "msg_1"
+        )
+        val firstResult = engine.processIntent(intent1) as StateResult.Created
+
+        // Case 4: existing is null, new is non-null
+        val intent2 = EventIntent(
+            matchedTaskId = firstResult.commitment.id,
+            description = "Buy milk",
+            detectedTime = 1672531200000L,
+            confidence = 1.0f,
+            sourceId = "msg_2"
+        )
+        val secondResult = engine.processIntent(intent2)
+        assertTrue(secondResult is StateResult.ConflictDetected)
+        
+        // Ensure state wasn't modified
+        assertEquals(null, firstResult.commitment.deadline?.originalTime)
+        
+        // Case 5: existing is non-null, new is null
+        val intent3 = EventIntent(
+            matchedTaskId = null,
+            description = "Read book",
+            detectedTime = 1672531200000L,
+            confidence = 0.8f,
+            sourceId = "msg_3"
+        )
+        val thirdResult = engine.processIntent(intent3) as StateResult.Created
+
+        val intent4 = EventIntent(
+            matchedTaskId = thirdResult.commitment.id,
+            description = "Read book",
+            detectedTime = null,
+            confidence = 1.0f,
+            sourceId = "msg_4"
+        )
+        val fourthResult = engine.processIntent(intent4)
+        assertTrue(fourthResult is StateResult.ConflictDetected)
+        
+        // Ensure state wasn't modified
+        assertEquals(1672531200000L, thirdResult.commitment.deadline?.originalTime)
     }
 }

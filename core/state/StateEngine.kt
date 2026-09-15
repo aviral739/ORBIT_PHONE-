@@ -44,13 +44,7 @@ class StateEngine {
 
         // Explicitly handle intents with no deadline
         if (currentDeadlineTime == null && intent.detectedTime == null) {
-            return StateResult.ConflictDetected(
-                Conflict(
-                    existingCommitmentId = existingCommitment.id,
-                    newEvidenceId = intent.sourceId,
-                    description = "Cannot automatically merge intents with no deadlines"
-                )
-            )
+            return StateResult.Unresolved("Cannot automatically merge intents with no deadlines")
         }
 
         // ACCUMULATE: If detectedTime matches existing deadline
