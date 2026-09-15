@@ -6,14 +6,6 @@ import java.util.UUID
 data class EventIntent(
     val matchedTaskId: String?, 
     val description: String, 
-package core.state
-
-import java.util.UUID
-
-// Temporary dummy data class (to be moved to model module later)
-data class EventIntent(
-    val matchedTaskId: String?, 
-    val description: String, 
     val detectedTime: Long?, 
     val confidence: Float, 
     val sourceId: String
