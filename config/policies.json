@@ -1,93 +1,279 @@
 {
-  "_comment": "ORBIT governance policies — defines execution rules, confirmation requirements, and undo windows per tier",
+  "_meta": {
+    "version": "2.0.0",
+    "description": "ORBIT dynamic governance policies — consumed by DecisionEngine, ActionDispatcher, and OfficeKitBridge at runtime.",
+    "last_updated": "2026-09-15",
+    "schema": "orbit_policies_v2"
+  },
 
-  "governance_tiers": {
+  "autonomy_tiers": {
 
     "SAFE": {
-      "_comment": "Fully automatic — no user confirmation required. Low-risk, read-only or ambient actions.",
-      "requires_confirmation": false,
-      "audit_logged":          true,
-      "undo_window_ms":        5000,
+      "_description": "Non-destructive, read-only or ambient actions. Fully autonomous — no user involvement required.",
+      "user_confirmation_required": false,
+      "audit_required": false,
+      "rollback_supported": false,
+      "max_batch_size": 50,
+      "auto_execution_timeout_ms": 100,
       "actions": [
-        "log_event",
-        "generate_quick_reply",
-        "store_ocr_snippet",
-        "store_audio_memo",
-        "compress_duplicate_event",
         "drop_low_confidence_event",
-        "read_clipboard"
-      ],
-      "domain_rules": {
-        "communication": {
-          "allow_auto_reply":   true,
-          "reply_max_chars":  160
-        },
-        "knowledge": {
-          "allow_ambient_ocr_store": true
-        }
-      }
+        "compress_duplicate_event",
+        "generate_canned_reply_suggestion",
+        "read_clipboard",
+        "cache_ocr_snippet_local",
+        "cache_audio_memo_local",
+        "log_triage_decision",
+        "read_knowledge_base",
+        "ambient_sensor_polling"
+      ]
     },
 
     "REVERSIBLE": {
-      "_comment": "Auto-executed but audit-logged. User can undo within the undo window.",
-      "requires_confirmation": false,
-      "audit_logged":          true,
-      "undo_window_ms":       30000,
+      "_description": "Non-destructive state mutations that are logged and can be rolled back within the undo window.",
+      "user_confirmation_required": false,
+      "audit_required": true,
+      "rollback_supported": true,
+      "rollback_window_ms": 30000,
+      "auto_execution_timeout_ms": 500,
       "actions": [
         "create_task",
         "update_task_priority",
-        "set_local_alarm",
-        "write_clipboard_escalation",
+        "update_task_due_date",
+        "mark_task_complete",
+        "schedule_local_alarm",
+        "enqueue_reminder",
         "store_commitment",
         "reschedule_commitment",
-        "toggle_dnd"
-      ],
-      "domain_rules": {
-        "tasks": {
-          "allow_auto_create":    true,
-          "max_auto_priority":   "P1"
-        },
-        "bridge": {
-          "allow_clipboard_write": true,
-          "max_payload_bytes":  4096
-        },
-        "communication": {
-          "allow_alarm_set": true
-        }
-      }
+        "toggle_dnd_mode",
+        "write_clipboard_escalation",
+        "initiate_desktop_handshake",
+        "insert_knowledge_snippet",
+        "update_knowledge_tags"
+      ]
     },
 
     "SENSITIVE": {
-      "_comment": "Requires explicit user confirmation before execution. High-risk or destructive actions.",
-      "requires_confirmation": true,
-      "audit_logged":          true,
-      "undo_window_ms":            0,
-      "confirmation_timeout_ms": 15000,
+      "_description": "Destructive or externally visible actions. Require explicit user confirmation before execution.",
+      "user_confirmation_required": true,
+      "audit_required": true,
+      "rollback_supported": false,
+      "confirmation_timeout_ms": 30000,
+      "fallback_action": "HOLD_IN_QUEUE",
       "actions": [
-        "cancel_calendar_event",
         "delete_task",
         "delete_commitment",
-        "send_sensitive_reply",
+        "cancel_calendar_event",
+        "modify_calendar_event",
+        "send_automated_outbound_message",
         "purge_knowledge_snippets",
-        "escalate_to_desktop_solver"
-      ],
-      "domain_rules": {
-        "tasks": {
-          "allow_auto_delete":  false,
-          "require_pin":        false
-        },
-        "communication": {
-          "allow_sensitive_send": false,
-          "whitelist_packages": ["com.whatsapp", "com.slack"]
-        },
-        "bridge": {
-          "allow_ollama_escalation": true,
-          "max_escalation_payload_bytes": 8192
-        }
-      }
+        "purge_audit_log",
+        "escalate_to_desktop_solver",
+        "execute_sensitive_quick_reply"
+      ]
     }
+
   },
 
-  "default_tier": "SAFE",
-  "audit_retention_days": 30
+  "domain_matrix": {
+
+    "COMMUNICATION": {
+      "_description": "Governs incoming alert handling, spam filtering, and canned reply generation for WhatsApp, Slack, SMS, and similar.",
+      "enabled": true,
+      "default_tier": "SAFE",
+      "supported_packages": [
+        "com.whatsapp",
+        "com.whatsapp.w4b",
+        "com.slack",
+        "com.microsoft.teams",
+        "com.google.android.apps.messaging",
+        "org.telegram.messenger",
+        "com.discord",
+        "com.google.android.gm"
+      ],
+      "spam_detection": {
+        "enabled": true,
+        "confidence_drop_threshold": 0.40,
+        "action_on_spam": "DROP"
+      },
+      "canned_replies": {
+        "enabled": true,
+        "max_suggestions": 3,
+        "max_chars_per_reply": 160,
+        "auto_send_allowed": false,
+        "auto_send_tier": "SENSITIVE",
+        "suggestion_tier": "SAFE"
+      },
+      "alert_deduplication": {
+        "enabled": true,
+        "window_ms": 5000,
+        "action_on_duplicate": "COMPRESS"
+      }
+    },
+
+    "TASK_MANAGEMENT": {
+      "_description": "Controls automatic task extraction, priority assignment, and auto-completion policies.",
+      "enabled": true,
+      "default_tier": "REVERSIBLE",
+      "auto_extraction": {
+        "enabled": true,
+        "min_confidence": 0.65,
+        "sources": ["NOTIFICATION", "AUDIO_WHISPER", "CAMERA_OCR", "CLIPBOARD"]
+      },
+      "priority_rules": {
+        "P0": {
+          "_description": "Critical — immediate action required.",
+          "urgency_score_min": 0.85,
+          "keywords": ["urgent", "asap", "critical", "immediately", "right now", "emergency"],
+          "auto_alarm": true,
+          "alarm_lead_time_ms": 900000
+        },
+        "P1": {
+          "_description": "High — action required within the day.",
+          "urgency_score_min": 0.65,
+          "keywords": ["today", "soon", "deadline", "by end of day", "eod"],
+          "auto_alarm": true,
+          "alarm_lead_time_ms": 3600000
+        },
+        "P2": {
+          "_description": "Normal — no immediate urgency.",
+          "urgency_score_min": 0.00,
+          "keywords": [],
+          "auto_alarm": false,
+          "alarm_lead_time_ms": 0
+        }
+      },
+      "auto_completion": {
+        "enabled": false,
+        "requires_tier": "SENSITIVE"
+      },
+      "deletion_policy": {
+        "requires_tier": "SENSITIVE",
+        "soft_delete_first": true,
+        "hard_delete_delay_ms": 86400000
+      }
+    },
+
+    "KNOWLEDGE_BASE": {
+      "_description": "Ingestion policies for CameraX OCR frames and Whisper audio memos, including confidence gates and retention.",
+      "enabled": true,
+      "default_tier": "SAFE",
+      "camera_ocr": {
+        "enabled": true,
+        "min_confidence": 0.70,
+        "min_character_count": 40,
+        "min_word_count": 6,
+        "frame_sample_interval_ms": 1000,
+        "temporal_keyword_filter": true,
+        "keywords": [
+          "deadline", "due", "meeting", "submit", "deliver",
+          "AM", "PM", "today", "tomorrow", "urgent", "reminder"
+        ]
+      },
+      "audio_memo": {
+        "enabled": true,
+        "min_confidence": 0.72,
+        "sample_rate_hz": 16000,
+        "bit_depth": 16,
+        "min_duration_ms": 1500,
+        "commitment_keywords": [
+          "deadline", "meeting", "submit", "postpone", "call",
+          "due", "review", "deliver", "schedule", "remind"
+        ]
+      },
+      "retention": {
+        "camera_ocr_days": 90,
+        "audio_memo_days": 180,
+        "clipboard_days": 30
+      },
+      "purge_policy": {
+        "requires_tier": "SENSITIVE",
+        "auto_purge_enabled": true,
+        "auto_purge_runs_at": "02:00"
+      }
+    },
+
+    "CALENDAR_SCHEDULING": {
+      "_description": "Overlap detection, collision resolution, and Office Kit desktop escalation conditions.",
+      "enabled": true,
+      "default_tier": "REVERSIBLE",
+      "overlap_detection": {
+        "enabled": true,
+        "lookahead_hours": 48,
+        "action_on_overlap": "ESCALATE_OR_PROMPT"
+      },
+      "collision_resolution": {
+        "strategy": "PRIORITY_WINS",
+        "priority_order": ["P0", "P1", "P2"],
+        "auto_resolve_threshold": 0.85,
+        "manual_resolve_tier": "SENSITIVE"
+      },
+      "office_kit_escalation": {
+        "enabled": true,
+        "trigger_conditions": [
+          "COLLISION_UNRESOLVABLE_LOCALLY",
+          "CROSS_DEVICE_SYNC_REQUIRED",
+          "P0_DEADLINE_CONFLICT",
+          "EXTERNAL_PARTICIPANT_INVOLVED"
+        ],
+        "escalation_tier": "REVERSIBLE",
+        "response_timeout_ms": 10000,
+        "fallback_on_timeout": "HOLD_IN_QUEUE"
+      },
+      "create_event_tier": "REVERSIBLE",
+      "modify_event_tier": "SENSITIVE",
+      "cancel_event_tier": "SENSITIVE"
+    }
+
+  },
+
+  "degradation_policies": {
+
+    "LOW_BATTERY_POLICY": {
+      "_description": "Entered when device battery falls below the threshold. Suppresses expensive REASON-tier operations.",
+      "trigger_battery_pct": 20,
+      "suppress_tiers": ["REASON"],
+      "convert_reason_to": "QUEUE",
+      "disable_features": [
+        "camera_ocr_continuous",
+        "audio_whisper_recording",
+        "desktop_bridge_polling"
+      ],
+      "keep_features": [
+        "notification_listener",
+        "local_alarm_delivery",
+        "sqlite_read"
+      ],
+      "exit_condition": "CHARGING_CONNECTED"
+    },
+
+    "OFFLINE_POLICY": {
+      "_description": "Entered when network connectivity is lost. Buffers bridge messages and falls back to local SQLite.",
+      "trigger_condition": "NETWORK_UNAVAILABLE",
+      "local_sqlite_fallback": true,
+      "buffer_bridge_messages": true,
+      "bridge_buffer_max_items": 100,
+      "bridge_flush_on_reconnect": true,
+      "suppress_features": [
+        "office_kit_escalation",
+        "ollama_solver"
+      ],
+      "keep_features": [
+        "notification_listener",
+        "camera_ocr",
+        "audio_memo",
+        "task_creation",
+        "local_alarm"
+      ],
+      "exit_condition": "NETWORK_AVAILABLE"
+    }
+
+  },
+
+  "global_defaults": {
+    "default_tier": "SAFE",
+    "audit_retention_days": 30,
+    "undo_grace_period_ms": 5000,
+    "max_queue_depth": 500,
+    "queue_overflow_action": "DROP_OLDEST_SAFE"
+  }
 }
