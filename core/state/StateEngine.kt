@@ -11,17 +11,7 @@ data class EventIntent(
     val sourceId: String
 )
 
-data class Deadline(
-    val targetTime: Long?
-)
 
-data class Commitment(
-    val id: String,
-    val description: String,
-    val deadline: Deadline,
-    val sourceEvidenceIds: MutableList<String>,
-    var confidence: Float
-)
 
 data class Conflict(
     val existingCommitmentId: String,
@@ -38,7 +28,7 @@ class StateEngine {
             val newId = UUID.randomUUID().toString()
             val newCommitment = Commitment(
                 id = newId,
-                description = intent.description,
+                taskDescription = intent.description,
                 deadline = Deadline(intent.detectedTime),
                 sourceEvidenceIds = mutableListOf(intent.sourceId),
                 confidence = intent.confidence
