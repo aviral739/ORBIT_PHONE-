@@ -6,18 +6,20 @@ import java.util.UUID
 data class EventIntent(
     val matchedTaskId: String?, 
     val description: String, 
+package core.state
+
+import java.util.UUID
+
+// Temporary dummy data class (to be moved to model module later)
+data class EventIntent(
+    val matchedTaskId: String?, 
+    val description: String, 
     val detectedTime: Long?, 
     val confidence: Float, 
     val sourceId: String
 )
 
 
-
-data class Conflict(
-    val existingCommitmentId: String,
-    val newDescription: String,
-    val message: String
-)
 
 class StateEngine {
     private val activeCommitments = mutableMapOf<String, Commitment>()
@@ -57,8 +59,8 @@ class StateEngine {
         else {
             return Conflict(
                 existingCommitmentId = existingCommitment.id,
-                newDescription = intent.description,
-                message = "Time conflict detected: existing deadline is $currentDeadlineTime, new intent time is ${intent.detectedTime}"
+                newEvidenceId = intent.sourceId,
+                description = "Time conflict detected: existing deadline is $currentDeadlineTime, new intent time is ${intent.detectedTime}"
             )
         }
     }
