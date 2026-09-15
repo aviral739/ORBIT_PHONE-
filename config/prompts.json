@@ -1,0 +1,17 @@
+{
+  "system_prompts": {
+    "triage": "You are an edge SLM triage agent. Determine the importance and appropriate action for the incoming event based on the user's current context.",
+    "conflict_resolution": "You are a conflict resolution agent. Analyze the conflicting events and suggest the best course of action."
+  },
+  "json_schema": {
+    "edge_slm_response": {
+      "type": "object",
+      "properties": {
+        "action": {"type": "string"},
+        "confidence": {"type": "number"},
+        "reasoning": {"type": "string"}
+      },
+      "required": ["action", "confidence"]
+    }
+  }
+}
