@@ -1,279 +1,297 @@
 {
   "_meta": {
-    "version": "2.0.0",
-    "description": "ORBIT dynamic governance policies — consumed by DecisionEngine, ActionDispatcher, and OfficeKitBridge at runtime.",
-    "last_updated": "2026-09-15",
-    "schema": "orbit_policies_v2"
+    "schema_version": "2.0.0",
+    "generated_for": "ORBIT",
+    "owner": "config",
+    "description": "Authoritative governance contract defining which actions the ORBIT agent may execute autonomously, under what conditions, and at what audit level. All numeric thresholds are resolved by name against thresholds.json at runtime. This file owns rules; thresholds.json owns numbers.",
+    "consumed_by": [
+      "core.decision.DecisionEngine",
+      "core.actions.ActionEngine",
+      "core.actions.ApprovalManager",
+      "core.actions.SafeActions",
+      "core.context.EvidenceManager",
+      "core.state.StateEngine",
+      "bridge.OfficeKitBridge"
+    ]
   },
 
   "autonomy_tiers": {
-
     "SAFE": {
-      "_description": "Non-destructive, read-only or ambient actions. Fully autonomous — no user involvement required.",
-      "user_confirmation_required": false,
-      "audit_required": false,
-      "rollback_supported": false,
-      "max_batch_size": 50,
-      "auto_execution_timeout_ms": 100,
-      "actions": [
-        "drop_low_confidence_event",
-        "compress_duplicate_event",
-        "generate_canned_reply_suggestion",
-        "read_clipboard",
-        "cache_ocr_snippet_local",
-        "cache_audio_memo_local",
-        "log_triage_decision",
-        "read_knowledge_base",
-        "ambient_sensor_polling"
-      ]
+      "user_confirmation": false,
+      "audit": "telemetry",
+      "undo_supported": false,
+      "undo_window_seconds": null,
+      "min_confidence_key": "safe_min_confidence"
     },
-
     "REVERSIBLE": {
-      "_description": "Non-destructive state mutations that are logged and can be rolled back within the undo window.",
-      "user_confirmation_required": false,
-      "audit_required": true,
-      "rollback_supported": true,
-      "rollback_window_ms": 30000,
-      "auto_execution_timeout_ms": 500,
-      "actions": [
-        "create_task",
-        "update_task_priority",
-        "update_task_due_date",
-        "mark_task_complete",
-        "schedule_local_alarm",
-        "enqueue_reminder",
-        "store_commitment",
-        "reschedule_commitment",
-        "toggle_dnd_mode",
-        "write_clipboard_escalation",
-        "initiate_desktop_handshake",
-        "insert_knowledge_snippet",
-        "update_knowledge_tags"
-      ]
+      "user_confirmation": false,
+      "audit": "full",
+      "undo_supported": true,
+      "undo_window_seconds": "reversible_undo_window_seconds",
+      "min_confidence_key": "reversible_min_confidence"
     },
-
     "SENSITIVE": {
-      "_description": "Destructive or externally visible actions. Require explicit user confirmation before execution.",
-      "user_confirmation_required": true,
-      "audit_required": true,
-      "rollback_supported": false,
-      "confirmation_timeout_ms": 30000,
-      "fallback_action": "HOLD_IN_QUEUE",
-      "actions": [
-        "delete_task",
-        "delete_commitment",
-        "cancel_calendar_event",
-        "modify_calendar_event",
-        "send_automated_outbound_message",
-        "purge_knowledge_snippets",
-        "purge_audit_log",
-        "escalate_to_desktop_solver",
-        "execute_sensitive_quick_reply"
-      ]
+      "user_confirmation": true,
+      "audit": "full",
+      "undo_supported": false,
+      "undo_window_seconds": null,
+      "min_confidence_key": "sensitive_min_confidence"
     }
-
   },
 
   "domain_matrix": {
-
-    "COMMUNICATION": {
-      "_description": "Governs incoming alert handling, spam filtering, and canned reply generation for WhatsApp, Slack, SMS, and similar.",
-      "enabled": true,
-      "default_tier": "SAFE",
-      "supported_packages": [
-        "com.whatsapp",
-        "com.whatsapp.w4b",
-        "com.slack",
-        "com.microsoft.teams",
-        "com.google.android.apps.messaging",
-        "org.telegram.messenger",
-        "com.discord",
-        "com.google.android.gm"
-      ],
-      "spam_detection": {
-        "enabled": true,
-        "confidence_drop_threshold": 0.40,
-        "action_on_spam": "DROP"
-      },
-      "canned_replies": {
-        "enabled": true,
-        "max_suggestions": 3,
-        "max_chars_per_reply": 160,
-        "auto_send_allowed": false,
-        "auto_send_tier": "SENSITIVE",
-        "suggestion_tier": "SAFE"
-      },
-      "alert_deduplication": {
-        "enabled": true,
-        "window_ms": 5000,
-        "action_on_duplicate": "COMPRESS"
-      }
+    "NOTIFICATION": {
+      "actions": [
+        {
+          "id": "COMPRESS_NOTIFICATION",
+          "description": "Merge semantically identical or near-duplicate notifications into a single grouped entry to reduce noise.",
+          "default_tier": "SAFE",
+          "reversible": true,
+          "external_side_effect": false,
+          "required_evidence_count": 2
+        },
+        {
+          "id": "DROP_NOTIFICATION",
+          "description": "Discard a low-confidence or spam notification without surfacing it to the user.",
+          "default_tier": "SAFE",
+          "reversible": false,
+          "external_side_effect": false,
+          "required_evidence_count": 1
+        }
+      ]
     },
 
     "TASK_MANAGEMENT": {
-      "_description": "Controls automatic task extraction, priority assignment, and auto-completion policies.",
-      "enabled": true,
-      "default_tier": "REVERSIBLE",
-      "auto_extraction": {
-        "enabled": true,
-        "min_confidence": 0.65,
-        "sources": ["NOTIFICATION", "AUDIO_WHISPER", "CAMERA_OCR", "CLIPBOARD"]
-      },
-      "priority_rules": {
-        "P0": {
-          "_description": "Critical — immediate action required.",
-          "urgency_score_min": 0.85,
-          "keywords": ["urgent", "asap", "critical", "immediately", "right now", "emergency"],
-          "auto_alarm": true,
-          "alarm_lead_time_ms": 900000
+      "actions": [
+        {
+          "id": "CREATE_REMINDER",
+          "description": "Create a new local reminder derived from extracted commitment text (notification, OCR, or audio).",
+          "default_tier": "SAFE",
+          "reversible": true,
+          "external_side_effect": false,
+          "required_evidence_count": 1
         },
-        "P1": {
-          "_description": "High — action required within the day.",
-          "urgency_score_min": 0.65,
-          "keywords": ["today", "soon", "deadline", "by end of day", "eod"],
-          "auto_alarm": true,
-          "alarm_lead_time_ms": 3600000
+        {
+          "id": "UPDATE_LOCAL_TASK",
+          "description": "Update mutable fields (title, description, notes) of an existing local task without changing its schedule.",
+          "default_tier": "SAFE",
+          "reversible": true,
+          "external_side_effect": false,
+          "required_evidence_count": 1
         },
-        "P2": {
-          "_description": "Normal — no immediate urgency.",
-          "urgency_score_min": 0.00,
-          "keywords": [],
-          "auto_alarm": false,
-          "alarm_lead_time_ms": 0
+        {
+          "id": "UPDATE_PRIORITY",
+          "description": "Adjust the priority tier (P0/P1/P2) of an existing local task based on new context signals.",
+          "default_tier": "SAFE",
+          "reversible": true,
+          "external_side_effect": false,
+          "required_evidence_count": 1
+        },
+        {
+          "id": "REORGANIZE_TASKS",
+          "description": "Reorder or re-categorize multiple tasks in bulk following a significant context shift.",
+          "default_tier": "REVERSIBLE",
+          "reversible": true,
+          "external_side_effect": false,
+          "required_evidence_count": 2
+        },
+        {
+          "id": "RESCHEDULE_LOCAL_REMINDER",
+          "description": "Move an existing local reminder to a new timestamp derived from updated commitment evidence.",
+          "default_tier": "REVERSIBLE",
+          "reversible": true,
+          "external_side_effect": false,
+          "required_evidence_count": 2
+        },
+        {
+          "id": "CHANGE_TASK_PRIORITY",
+          "description": "Escalate or de-escalate a task priority tier in response to converging high-confidence evidence.",
+          "default_tier": "REVERSIBLE",
+          "reversible": true,
+          "external_side_effect": false,
+          "required_evidence_count": 2
+        },
+        {
+          "id": "DELETE_INFORMATION",
+          "description": "Permanently remove a task, note, or stored evidence record from local storage. Irreversible.",
+          "default_tier": "SENSITIVE",
+          "reversible": false,
+          "external_side_effect": false,
+          "required_evidence_count": 3
         }
-      },
-      "auto_completion": {
-        "enabled": false,
-        "requires_tier": "SENSITIVE"
-      },
-      "deletion_policy": {
-        "requires_tier": "SENSITIVE",
-        "soft_delete_first": true,
-        "hard_delete_delay_ms": 86400000
-      }
-    },
-
-    "KNOWLEDGE_BASE": {
-      "_description": "Ingestion policies for CameraX OCR frames and Whisper audio memos, including confidence gates and retention.",
-      "enabled": true,
-      "default_tier": "SAFE",
-      "camera_ocr": {
-        "enabled": true,
-        "min_confidence": 0.70,
-        "min_character_count": 40,
-        "min_word_count": 6,
-        "frame_sample_interval_ms": 1000,
-        "temporal_keyword_filter": true,
-        "keywords": [
-          "deadline", "due", "meeting", "submit", "deliver",
-          "AM", "PM", "today", "tomorrow", "urgent", "reminder"
-        ]
-      },
-      "audio_memo": {
-        "enabled": true,
-        "min_confidence": 0.72,
-        "sample_rate_hz": 16000,
-        "bit_depth": 16,
-        "min_duration_ms": 1500,
-        "commitment_keywords": [
-          "deadline", "meeting", "submit", "postpone", "call",
-          "due", "review", "deliver", "schedule", "remind"
-        ]
-      },
-      "retention": {
-        "camera_ocr_days": 90,
-        "audio_memo_days": 180,
-        "clipboard_days": 30
-      },
-      "purge_policy": {
-        "requires_tier": "SENSITIVE",
-        "auto_purge_enabled": true,
-        "auto_purge_runs_at": "02:00"
-      }
+      ]
     },
 
     "CALENDAR_SCHEDULING": {
-      "_description": "Overlap detection, collision resolution, and Office Kit desktop escalation conditions.",
-      "enabled": true,
-      "default_tier": "REVERSIBLE",
-      "overlap_detection": {
-        "enabled": true,
-        "lookahead_hours": 48,
-        "action_on_overlap": "ESCALATE_OR_PROMPT"
-      },
-      "collision_resolution": {
-        "strategy": "PRIORITY_WINS",
-        "priority_order": ["P0", "P1", "P2"],
-        "auto_resolve_threshold": 0.85,
-        "manual_resolve_tier": "SENSITIVE"
-      },
-      "office_kit_escalation": {
-        "enabled": true,
-        "trigger_conditions": [
-          "COLLISION_UNRESOLVABLE_LOCALLY",
-          "CROSS_DEVICE_SYNC_REQUIRED",
-          "P0_DEADLINE_CONFLICT",
-          "EXTERNAL_PARTICIPANT_INVOLVED"
-        ],
-        "escalation_tier": "REVERSIBLE",
-        "response_timeout_ms": 10000,
-        "fallback_on_timeout": "HOLD_IN_QUEUE"
-      },
-      "create_event_tier": "REVERSIBLE",
-      "modify_event_tier": "SENSITIVE",
-      "cancel_event_tier": "SENSITIVE"
-    }
+      "actions": [
+        {
+          "id": "RESCHEDULE_CALENDAR_REMINDER",
+          "description": "Adjust the timestamp of a locally managed calendar reminder in response to deadline evidence.",
+          "default_tier": "REVERSIBLE",
+          "reversible": true,
+          "external_side_effect": false,
+          "required_evidence_count": 2
+        },
+        {
+          "id": "CANCEL_MEETING",
+          "description": "Cancel a scheduled calendar event. May affect external participants; cannot be undone automatically.",
+          "default_tier": "SENSITIVE",
+          "reversible": false,
+          "external_side_effect": true,
+          "required_evidence_count": 3
+        },
+        {
+          "id": "MAKE_EXTERNAL_COMMITMENT",
+          "description": "Confirm attendance, agree to a deadline, or otherwise commit on behalf of the user to an external party.",
+          "default_tier": "SENSITIVE",
+          "reversible": false,
+          "external_side_effect": true,
+          "required_evidence_count": 3
+        }
+      ]
+    },
 
+    "COMMUNICATION": {
+      "actions": [
+        {
+          "id": "SEND_MESSAGE",
+          "description": "Dispatch an outbound message (quick reply or composed reply) to an external contact via a messaging app.",
+          "default_tier": "SENSITIVE",
+          "reversible": false,
+          "external_side_effect": true,
+          "required_evidence_count": 3
+        }
+      ]
+    },
+
+    "STATE_MEMORY": {
+      "actions": [
+        {
+          "id": "STORE_CONTEXT",
+          "description": "Persist a structured context record derived from any sensory input to local in-memory or SQLite state.",
+          "default_tier": "SAFE",
+          "reversible": true,
+          "external_side_effect": false,
+          "required_evidence_count": 1
+        },
+        {
+          "id": "UPDATE_INTERNAL_STATE",
+          "description": "Update the agent's internal representation of user goals, current focus, or active commitments.",
+          "default_tier": "SAFE",
+          "reversible": true,
+          "external_side_effect": false,
+          "required_evidence_count": 1
+        }
+      ]
+    },
+
+    "CAPTURE_OCR": {
+      "actions": [
+        {
+          "id": "STORE_OCR_CONTEXT",
+          "description": "Persist a structured context record derived from a CameraX OCR frame to local state.",
+          "default_tier": "SAFE",
+          "reversible": true,
+          "external_side_effect": false,
+          "required_evidence_count": 1
+        },
+        {
+          "id": "CREATE_OCR_REMINDER",
+          "description": "Extract a commitment or deadline from OCR-recognized text and create a corresponding local reminder.",
+          "default_tier": "SAFE",
+          "reversible": true,
+          "external_side_effect": false,
+          "required_evidence_count": 1
+        }
+      ]
+    }
+  },
+
+  "conflict_policy": {
+    "description": "When contradictory evidence exists for the same entity the effective tier is unconditionally escalated to SENSITIVE, regardless of the action's default_tier. The existing value is preserved until the user explicitly resolves the conflict. Silent overwrites are never permitted.",
+    "escalate_to": "SENSITIVE",
+    "preserve_existing_value": true,
+    "surface_conflict_to_user": true,
+    "silent_overwrite_permitted": false,
+    "required_evidence_divergence_key": "conflict_evidence_divergence_threshold"
+  },
+
+  "escalation_policy": {
+    "description": "Rules governing when and how a pending decision is forwarded to the laptop deep-reasoning layer via Office Kit. A pending action must be held, never executed, while escalation is in flight. A laptop result may raise the effective tier but never lower it.",
+    "eligible_tiers": ["REVERSIBLE", "SENSITIVE"],
+    "pending_action_while_escalating": "HOLD",
+    "auto_execute_while_escalating": false,
+    "laptop_result_may_lower_tier": false,
+    "laptop_result_may_raise_tier": true,
+    "escalation_timeout_key": "escalation_timeout_ms",
+    "timeout_fallback_action": "HOLD_IN_QUEUE"
+  },
+
+  "evidence_policy": {
+    "description": "Staleness rules. Evidence older than max_age_key (resolved in thresholds.json) is considered stale. A stale-evidence-backed action is demoted one autonomy tier: REVERSIBLE becomes SENSITIVE. SAFE is the floor and does not demote further.",
+    "max_age_key": "evidence_max_age_seconds",
+    "stale_evidence_tier_degradation": {
+      "SAFE": "SAFE",
+      "REVERSIBLE": "SENSITIVE",
+      "SENSITIVE": "SENSITIVE"
+    },
+    "floor_tier": "SAFE"
+  },
+
+  "privacy_policy": {
+    "description": "Local-first defaults. Raw event payloads never leave the device. Only structured context fields are permitted to cross the Office Kit bridge to the laptop layer.",
+    "raw_payload_leaves_device": false,
+    "allowed_bridge_field_categories": [
+      "structured_commitment",
+      "task_metadata",
+      "calendar_slot_request",
+      "conflict_summary",
+      "priority_signal"
+    ],
+    "denied_bridge_fields": [
+      "raw_notification_body",
+      "raw_ocr_text",
+      "raw_audio_transcript",
+      "contact_identifiers",
+      "message_content"
+    ]
   },
 
   "degradation_policies": {
-
     "LOW_BATTERY_POLICY": {
-      "_description": "Entered when device battery falls below the threshold. Suppresses expensive REASON-tier operations.",
-      "trigger_battery_pct": 20,
-      "suppress_tiers": ["REASON"],
-      "convert_reason_to": "QUEUE",
-      "disable_features": [
-        "camera_ocr_continuous",
-        "audio_whisper_recording",
-        "desktop_bridge_polling"
-      ],
-      "keep_features": [
-        "notification_listener",
-        "local_alarm_delivery",
-        "sqlite_read"
-      ],
+      "description": "When battery falls below the threshold, local inference is throttled, escalation to the laptop is suspended, and SENSITIVE actions are held rather than prompted until the device is charging.",
+      "trigger_condition_key": "battery_low_threshold_pct",
+      "throttle_local_inference": true,
+      "disable_escalation": true,
+      "tier_restrictions": {
+        "SAFE": "SAFE",
+        "REVERSIBLE": "REVERSIBLE",
+        "SENSITIVE": "HOLD"
+      },
       "exit_condition": "CHARGING_CONNECTED"
     },
-
     "OFFLINE_POLICY": {
-      "_description": "Entered when network connectivity is lost. Buffers bridge messages and falls back to local SQLite.",
-      "trigger_condition": "NETWORK_UNAVAILABLE",
-      "local_sqlite_fallback": true,
-      "buffer_bridge_messages": true,
-      "bridge_buffer_max_items": 100,
-      "bridge_flush_on_reconnect": true,
-      "suppress_features": [
-        "office_kit_escalation",
-        "ollama_solver"
-      ],
-      "keep_features": [
-        "notification_listener",
-        "camera_ocr",
-        "audio_memo",
-        "task_creation",
-        "local_alarm"
-      ],
+      "description": "When network connectivity is unavailable the phone must continue functioning fully standalone. Local inference runs unthrottled. Office Kit escalation is disabled; outbound bridge messages are buffered locally and flushed automatically on reconnect. SENSITIVE actions requiring escalation are held.",
+      "trigger_condition_key": "network_unavailable",
+      "throttle_local_inference": false,
+      "disable_escalation": true,
+      "phone_standalone": true,
+      "buffer_escalation_messages": true,
+      "escalation_buffer_flush_on_reconnect": true,
+      "escalation_buffer_max_size_key": "offline_bridge_buffer_max_items",
+      "tier_restrictions": {
+        "SAFE": "SAFE",
+        "REVERSIBLE": "REVERSIBLE",
+        "SENSITIVE": "HOLD"
+      },
       "exit_condition": "NETWORK_AVAILABLE"
     }
-
   },
 
   "global_defaults": {
-    "default_tier": "SAFE",
-    "audit_retention_days": 30,
-    "undo_grace_period_ms": 5000,
-    "max_queue_depth": 500,
-    "queue_overflow_action": "DROP_OLDEST_SAFE"
+    "description": "Fail-closed defaults. Any action or domain not matched by this file resolves to SENSITIVE, requiring explicit user confirmation before execution.",
+    "fallback_tier_for_unrecognized_action": "SENSITIVE",
+    "fail_closed_on_missing_policy": true,
+    "default_audit_level": "full"
   }
 }
