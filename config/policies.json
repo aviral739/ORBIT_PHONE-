@@ -14,14 +14,14 @@
       "bridge.OfficeKitBridge"
     ]
   },
-
   "autonomy_tiers": {
     "SAFE": {
       "user_confirmation": false,
       "audit": "telemetry",
       "undo_supported": false,
       "undo_window_seconds": null,
-      "min_confidence_key": "safe_min_confidence"
+      "min_confidence_key": "safe_min_confidence",
+      "description": "Fully autonomous actions with no external side effects. Note: While individual actions may be marked reversible (can be programmatically rolled back), the SAFE tier itself does not guarantee a user-facing undo UI or confirmation prompt. Actions here execute silently."
     },
     "REVERSIBLE": {
       "user_confirmation": false,
@@ -38,7 +38,6 @@
       "min_confidence_key": "sensitive_min_confidence"
     }
   },
-
   "domain_matrix": {
     "NOTIFICATION": {
       "actions": [
@@ -60,7 +59,6 @@
         }
       ]
     },
-
     "TASK_MANAGEMENT": {
       "actions": [
         {
@@ -104,14 +102,6 @@
           "required_evidence_count": 2
         },
         {
-          "id": "CHANGE_TASK_PRIORITY",
-          "description": "Escalate or de-escalate a task priority tier in response to converging high-confidence evidence.",
-          "default_tier": "REVERSIBLE",
-          "reversible": true,
-          "external_side_effect": false,
-          "required_evidence_count": 2
-        },
-        {
           "id": "DELETE_INFORMATION",
           "description": "Permanently remove a task, note, or stored evidence record from local storage. Irreversible.",
           "default_tier": "SENSITIVE",
@@ -121,7 +111,6 @@
         }
       ]
     },
-
     "CALENDAR_SCHEDULING": {
       "actions": [
         {
@@ -150,7 +139,6 @@
         }
       ]
     },
-
     "COMMUNICATION": {
       "actions": [
         {
@@ -163,7 +151,6 @@
         }
       ]
     },
-
     "STATE_MEMORY": {
       "actions": [
         {
@@ -184,7 +171,6 @@
         }
       ]
     },
-
     "CAPTURE_OCR": {
       "actions": [
         {
@@ -206,7 +192,6 @@
       ]
     }
   },
-
   "conflict_policy": {
     "description": "When contradictory evidence exists for the same entity the effective tier is unconditionally escalated to SENSITIVE, regardless of the action's default_tier. The existing value is preserved until the user explicitly resolves the conflict. Silent overwrites are never permitted.",
     "escalate_to": "SENSITIVE",
@@ -215,10 +200,12 @@
     "silent_overwrite_permitted": false,
     "required_evidence_divergence_key": "conflict_evidence_divergence_threshold"
   },
-
   "escalation_policy": {
     "description": "Rules governing when and how a pending decision is forwarded to the laptop deep-reasoning layer via Office Kit. A pending action must be held, never executed, while escalation is in flight. A laptop result may raise the effective tier but never lower it.",
-    "eligible_tiers": ["REVERSIBLE", "SENSITIVE"],
+    "eligible_tiers": [
+      "REVERSIBLE",
+      "SENSITIVE"
+    ],
     "pending_action_while_escalating": "HOLD",
     "auto_execute_while_escalating": false,
     "laptop_result_may_lower_tier": false,
@@ -226,7 +213,6 @@
     "escalation_timeout_key": "escalation_timeout_ms",
     "timeout_fallback_action": "HOLD_IN_QUEUE"
   },
-
   "evidence_policy": {
     "description": "Staleness rules. Evidence older than max_age_key (resolved in thresholds.json) is considered stale. A stale-evidence-backed action is demoted one autonomy tier: REVERSIBLE becomes SENSITIVE. SAFE is the floor and does not demote further.",
     "max_age_key": "evidence_max_age_seconds",
@@ -237,7 +223,6 @@
     },
     "floor_tier": "SAFE"
   },
-
   "privacy_policy": {
     "description": "Local-first defaults. Raw event payloads never leave the device. Only structured context fields are permitted to cross the Office Kit bridge to the laptop layer.",
     "raw_payload_leaves_device": false,
@@ -256,7 +241,6 @@
       "message_content"
     ]
   },
-
   "degradation_policies": {
     "LOW_BATTERY_POLICY": {
       "description": "When battery falls below the threshold, local inference is throttled, escalation to the laptop is suspended, and SENSITIVE actions are held rather than prompted until the device is charging.",
@@ -287,7 +271,6 @@
       "exit_condition": "NETWORK_AVAILABLE"
     }
   },
-
   "global_defaults": {
     "description": "Fail-closed defaults. Any action or domain not matched by this file resolves to SENSITIVE, requiring explicit user confirmation before execution.",
     "fallback_tier_for_unrecognized_action": "SENSITIVE",
