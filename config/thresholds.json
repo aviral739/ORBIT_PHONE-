@@ -1,17 +1,15 @@
 {
-  "_comment": "ORBIT multi-domain triage thresholds — consumed by DecisionEngine.kt and EventSimulator.py",
-
+  "_comment": "ORBIT multi-domain triage thresholds - consumed by DecisionEngine.kt and EventSimulator.py",
   "global": {
-    "drop_confidence_ceiling":      0.55,
+    "drop_confidence_ceiling": 0.55,
     "compress_similarity_threshold": 0.78,
-    "queue_urgency_ceiling":        0.65,
-    "reason_escalation_threshold":  0.70
+    "queue_urgency_ceiling": 0.65,
+    "reason_escalation_threshold": 0.7
   },
-
   "communication": {
     "_comment": "Parameters for chat-notification handling and QuickReplyEngine",
-    "auto_reply_confidence_min":    0.72,
-    "spam_filter_threshold":        0.40,
+    "suggested_reply_confidence_min": 0.72,
+    "spam_filter_threshold": 0.4,
     "chat_packages": [
       "com.whatsapp",
       "com.whatsapp.w4b",
@@ -22,40 +20,47 @@
       "com.discord"
     ]
   },
-
   "tasks": {
     "_comment": "Priority boundary scores used when routing text to TaskDao",
     "p0_urgency_min": 0.85,
     "p1_urgency_min": 0.65,
-    "p2_urgency_min": 0.00,
+    "p2_urgency_min": 0.0,
     "due_date_lookahead_hours": 24
   },
-
   "knowledge": {
     "_comment": "Filters for KnowledgeDao ingestion via VisionOcrAnalyzer",
-    "ocr_character_minimum":   40,
-    "min_word_count":           6,
-    "max_snippet_chars":      2048,
-    "retention_days":           90
+    "ocr_character_minimum": 40,
+    "min_word_count": 6,
+    "max_snippet_chars": 2048,
+    "retention_days": 90
   },
-
   "bridge": {
     "_comment": "Desktop OfficeKitBridge / orbit_daemon.py timing parameters",
-    "clipboard_poll_interval_ms":  800,
-    "request_timeout_ms":        10000,
-    "max_retry_attempts":             3,
-    "retry_backoff_ms":            2000
+    "clipboard_poll_interval_ms": 800,
+    "request_timeout_ms": 10000,
+    "max_retry_attempts": 3,
+    "retry_backoff_ms": 2000
   },
-
   "timeouts": {
-    "default_ms":          3000,
-    "model_inference_ms":  5000,
-    "db_write_ms":          500
+    "default_ms": 3000,
+    "model_inference_ms": 5000,
+    "db_write_ms": 500
   },
-
   "rate_limits": {
-    "events_per_minute":      100,
-    "db_writes_per_second":    50,
-    "quick_replies_per_min":   30
+    "events_per_minute": 100,
+    "db_writes_per_second": 50,
+    "quick_replies_per_min": 30
+  },
+  "autonomy_thresholds": {
+    "safe_min_confidence": 0.85,
+    "reversible_min_confidence": 0.7,
+    "sensitive_min_confidence": 0.5,
+    "reversible_undo_window_seconds": 30,
+    "conflict_evidence_divergence_threshold": 0.2,
+    "escalation_timeout_ms": 30000,
+    "evidence_max_age_seconds": 86400,
+    "battery_low_threshold_pct": 20,
+    "network_unavailable": true,
+    "offline_bridge_buffer_max_items": 100
   }
 }

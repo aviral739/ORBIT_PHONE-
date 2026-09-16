@@ -1,92 +1,257 @@
 {
-  "_comment": "ORBIT structured prompts and JSON extraction schemas — consumed by DecisionEngine and desktop orbit_daemon.py",
-
-  "system_prompts": {
-
-    "triage": {
-      "role":    "system",
-      "content": "You are an ORBIT edge triage agent running fully on-device. Given a raw sensory event (notification text, OCR snippet, or audio transcript), classify it into exactly one of: DROP, COMPRESS, QUEUE, REASON. Return a JSON object matching the triage_response schema. Do not make any network calls."
-    },
-
-    "task_parser": {
-      "role":    "system",
-      "content": "You are an ORBIT task extraction agent. Given raw text from a notification, audio transcript, or OCR capture, extract a structured task definition. Infer a short title (max 120 chars), a priority (P0, P1, or P2 — where P0 is critical/urgent), and a due date if one is mentioned. Return JSON matching the task_parse_response schema exactly. If no due date is found, set due_date to null."
-    },
-
-    "communication_replier": {
-      "role":    "system",
-      "content": "You are an ORBIT quick-reply assistant. Given the text of an incoming chat message, generate exactly 3 short, contextually appropriate reply suggestions. Each reply must be under 160 characters, conversational, and suitable to send as-is. Return JSON matching the quick_reply_response schema. Do not include explanations or caveats."
-    },
-
-    "conflict_resolver": {
-      "role":    "system",
-      "content": "You are an ORBIT schedule conflict resolver. Given two or more conflicting commitments (each with a description and deadline), propose the best resolution: which to keep, which to reschedule, and a suggested new time slot if applicable. Return JSON matching the conflict_resolution_response schema. Prioritise P0 commitments and the earliest external deadline."
-    }
+  "_meta": {
+    "schema_version": "1.0.0",
+    "generated_for": "ORBIT Edge Intelligence Engine",
+    "consumed_by": [
+      "DecisionEngine.kt",
+      "EventSimulator.py",
+      "LocalSLMBridge"
+    ]
   },
-
-  "json_schemas": {
-
-    "triage_response": {
-      "type": "object",
-      "required": ["decision", "confidence", "reasoning"],
-      "properties": {
-        "decision":  { "type": "string", "enum": ["DROP", "COMPRESS", "QUEUE", "REASON"] },
-        "confidence":{ "type": "number", "minimum": 0.0, "maximum": 1.0 },
-        "reasoning": { "type": "string", "maxLength": 300 }
-      }
-    },
-
-    "task_parse_response": {
-      "type": "object",
-      "required": ["title", "priority"],
-      "properties": {
-        "title":       { "type": "string",  "maxLength": 120 },
-        "description": { "type": "string",  "maxLength": 512 },
-        "priority":    { "type": "string",  "enum": ["P0", "P1", "P2"] },
-        "due_date":    { "type": ["string", "null"], "format": "date-time",
-                         "description": "ISO 8601 datetime string, or null if not found" },
-        "tags":        { "type": "array", "items": { "type": "string" }, "maxItems": 5 }
-      }
-    },
-
-    "quick_reply_response": {
-      "type": "object",
-      "required": ["replies"],
-      "properties": {
-        "intent": { "type": "string",
-                    "enum": ["GREETING", "QUESTION", "DEADLINE", "MEETING",
-                             "RESCHEDULE", "APPRECIATION", "APOLOGY",
-                             "ACKNOWLEDGEMENT", "URGENT", "UNKNOWN"] },
-        "replies": {
-          "type": "array",
-          "minItems": 3,
-          "maxItems": 3,
-          "items": { "type": "string", "maxLength": 160 }
+  "prompts": {
+    "triage": {
+      "description": "Edge reflex classifier, 4-tier cascade, minimal latency.",
+      "system_prompt": "You are the ORBIT edge reflex classifier. Evaluate the incoming event and assign a decision tier, confidence, rationale, and domain. Your output must strictly adhere to the provided JSON schema. Never fabricate facts. Never infer missing event information as certain. Confidence must represent actual evidence quality. If evidence is insufficient for a confident low-level decision, prefer REASON. Do not invent a domain outside the enum. Output JSON only. Do not include markdown. Do not include extra properties. Do not claim an action was executed.",
+      "input_contract": {
+        "event_text": "The raw text content of the incoming event (e.g., notification body, OCR text, audio transcript).",
+        "source_type": "The origin of the event (e.g., NOTIFICATION, AUDIO, CAMERA)."
+      },
+      "output_schema": {
+        "type": "object",
+        "required": [
+          "decision",
+          "confidence",
+          "rationale",
+          "domain"
+        ],
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "DROP",
+              "COMPRESS",
+              "QUEUE",
+              "REASON"
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string",
+            "enum": [
+              "NOTIFICATION",
+              "TASK_MANAGEMENT",
+              "CALENDAR_SCHEDULING",
+              "COMMUNICATION",
+              "STATE_MEMORY",
+              "CAPTURE_OCR"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "few_shot_examples": [
+        {
+          "input": {
+            "event_text": "Meeting moved to 3 PM",
+            "source_type": "NOTIFICATION"
+          },
+          "output": {
+            "decision": "REASON",
+            "confidence": 0.85,
+            "rationale": "Schedule change requires deeper analysis and potential conflict resolution.",
+            "domain": "CALENDAR_SCHEDULING"
+          }
         }
-      }
+      ]
     },
-
-    "conflict_resolution_response": {
-      "type": "object",
-      "required": ["keep_commitment_id", "action"],
-      "properties": {
-        "keep_commitment_id":      { "type": "string" },
-        "reschedule_commitment_id":{ "type": ["string", "null"] },
-        "action":    { "type": "string", "enum": ["KEEP_ORIGINAL", "RESCHEDULE", "CANCEL_BOTH", "ESCALATE"] },
-        "suggested_slot": { "type": ["string", "null"], "format": "date-time" },
-        "rationale": { "type": "string", "maxLength": 400 },
-        "confidence":{ "type": "number", "minimum": 0.0, "maximum": 1.0 }
-      }
+    "task_parser": {
+      "description": "Extracts concrete action items from text/OCR/transcript, zero ambiguity.",
+      "system_prompt": "You are the ORBIT task parsing agent. Extract task metadata (title, priority, due date, and tags) from the input text. Your output must strictly match the provided JSON schema. P0/P1/P2 may only be selected when the input provides sufficient evidence. If priority cannot be reliably determined, return null. Never fabricate a due date. Explicit dates should be preserved. Deterministic relative dates such as 'tomorrow', 'next Monday', etc. may be resolved using current_timestamp. Ambiguous phrases must return null rather than guessing. Do not invent tags that are unsupported by the input. Output JSON only. No conversational explanation.",
+      "input_contract": {
+        "raw_content": "The text from which to extract task information.",
+        "current_timestamp": "The current date and time in ISO-8601 format to resolve relative time references."
+      },
+      "output_schema": {
+        "type": "object",
+        "required": [
+          "title",
+          "priority",
+          "due_date",
+          "tags",
+          "confidence"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "priority": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "P0",
+              "P1",
+              "P2",
+              null
+            ]
+          },
+          "due_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0
+          }
+        },
+        "additionalProperties": false
+      },
+      "few_shot_examples": [
+        {
+          "input": {
+            "raw_content": "Don't forget to submit the Q3 report by end of day Friday",
+            "current_timestamp": "2026-09-15T12:00:00Z"
+          },
+          "output": {
+            "title": "Submit Q3 report",
+            "priority": "P1",
+            "due_date": "2026-09-18T17:00:00Z",
+            "tags": [
+              "report",
+              "work"
+            ],
+            "confidence": 0.95
+          }
+        }
+      ]
     },
-
-    "edge_slm_response": {
-      "type": "object",
-      "required": ["action", "confidence"],
-      "properties": {
-        "action":    { "type": "string" },
-        "confidence":{ "type": "number", "minimum": 0.0, "maximum": 1.0 },
-        "reasoning": { "type": "string" }
-      }
+    "communication_replier": {
+      "description": "Generates 3 intent-typed micro-replies for an incoming chat notification.",
+      "system_prompt": "You are the ORBIT communication replier. Generate exactly 3 short, contextually appropriate micro-replies for the incoming message. These replies are suggestions only. The model must never claim that any reply has been sent or delivered. NEVER perform an external communication action. Replies must be based only on the supplied message and sender context. Do not invent facts. Your output must strictly match the JSON schema. Do not include any conversational padding outside JSON. Output JSON only. No markdown. Intent is derived only from the supplied message and sender context. Do not invent facts or unsupported intent. Do not claim that any message was sent. Do not perform external communication.",
+      "input_contract": {
+        "message_text": "The incoming message text from a chat application.",
+        "sender": "The name or identifier of the person sending the message."
+      },
+      "output_schema": {
+        "type": "object",
+        "required": [
+          "intent",
+          "replies"
+        ],
+        "properties": {
+          "intent": {
+            "type": "string"
+          },
+          "replies": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 160
+            },
+            "minItems": 3,
+            "maxItems": 3
+          }
+        },
+        "additionalProperties": false
+      },
+      "few_shot_examples": [
+        {
+          "input": {
+            "message_text": "Can you review my PR when you get a chance?",
+            "sender": "Alice"
+          },
+          "output": {
+            "intent": "REQUEST",
+            "replies": [
+              "Sure, I'll take a look shortly.",
+              "On it, will review today.",
+              "Can't right now, but will do it later."
+            ]
+          }
+        }
+      ]
+    },
+    "conflict_resolver": {
+      "description": "Resolves calendar collisions between new evidence and stored state.",
+      "system_prompt": "You are the ORBIT conflict resolver. Evaluate the incoming event against the existing calendar state and recommend a resolution. ESCALATE_TO_LAPTOP means 'Escalate the unresolved conflict to a higher-level reasoning/desktop stage when such a stage is available.' never silently choose between conflicting evidence; consider evidence confidence; consider evidence recency; avoid guessing when confidence is insufficient; escalate when the evidence does not support a safe resolution; never invent calendar facts; never claim that a meeting was rescheduled; never claim that an action was executed. The model may only return action IDs that exist in the ORBIT policy configuration. It must never invent an action ID. Output JSON only. No markdown. The suggested_action_id does NOT determine the final autonomy tier. The final effective tier is determined by policies.json rules including conflict policy, evidence requirements, confidence requirements, and degradation policies.",
+      "input_contract": {
+        "incoming_event": "The new scheduling evidence or event details.",
+        "existing_state": "The current calendar commitments that conflict with the incoming event."
+      },
+      "output_schema": {
+        "type": "object",
+        "required": [
+          "resolution",
+          "target_slot",
+          "rationale",
+          "suggested_action_id"
+        ],
+        "properties": {
+          "resolution": {
+            "type": "string",
+            "enum": [
+              "KEEP_EXISTING",
+              "RESCHEDULE_INCOMING",
+              "ESCALATE_TO_LAPTOP"
+            ]
+          },
+          "target_slot": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "suggested_action_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "RESCHEDULE_CALENDAR_REMINDER",
+              "CANCEL_MEETING",
+              "MAKE_EXTERNAL_COMMITMENT",
+              null
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "few_shot_examples": [
+        {
+          "input": {
+            "incoming_event": "Alice says our 1 on 1 is moved to 4 PM.",
+            "existing_state": "Meeting with Bob at 4 PM."
+          },
+          "output": {
+            "resolution": "ESCALATE_TO_LAPTOP",
+            "target_slot": null,
+            "rationale": "High confidence conflict between Alices new time and Bobs existing meeting. Unclear which takes priority, requires escalation to a higher-level stage.",
+            "suggested_action_id": "RESCHEDULE_CALENDAR_REMINDER"
+          }
+        }
+      ]
     }
   }
 }
