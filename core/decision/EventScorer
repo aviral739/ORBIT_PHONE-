@@ -1,0 +1,312 @@
+package core.decision
+
+import java.time.Instant
+
+/**
+ * Represents an incoming event in the ORBIT system.
+ * Matches the shared ORBIT Event contract.
+ */
+data class Event(
+    val id: String,
+    val source: EventSource,
+    val type: String,
+    val text: String,
+    val timestamp: Instant,
+    val metadata: Map<String, String> = emptyMap()
+) {
+    init {
+        require(id.isNotBlank()) { "Event ID must not be blank" }
+        require(type.isNotBlank()) { "Event type must not be blank" }
+        require(timestamp != null) { "Timestamp must not be null" }
+    }
+}
+
+/**
+ * Enum of supported event sources per the ORBIT contract.
+ */
+enum class EventSource {
+    VOICE,
+    NOTIFICATION,
+    CAMERA,
+    MANUAL,
+    SIMULATOR
+}
+
+/**
+ * Result of scoring an event. Contains individual dimension scores
+ * and an overall composite score.
+ *
+ * This is the output of EventScorer and input to DecisionEngine.
+ * EventScorer does NOT decide DROP/COMPRESS/QUEUE/REASON.
+ */
+data class ScoringResult(
+    val eventId: String,
+    val overallScore: Double,
+    val relevance: Double,
+    val urgency: Double,
+    val novelty: Double,
+    val contextChange: Double,
+    val confidence: Double,
+    val scoringContext: ScoringContext
+) {
+    init {
+        require(overallScore in 0.0..1.0) { "Overall score must be between 0.0 and 1.0" }
+        require(relevance in 0.0..1.0) { "Relevance must be between 0.0 and 1.0" }
+        require(urgency in 0.0..1.0) { "Urgency must be between 0.0 and 1.0" }
+        require(novelty in 0.0..1.0) { "Novelty must be between 0.0 and 1.0" }
+        require(contextChange in 0.0..1.0) { "Context change must be between 0.0 and 1.0" }
+        require(confidence in 0.0..1.0) { "Confidence must be between 0.0 and 1.0" }
+        require(eventId.isNotBlank()) { "Event ID must not be blank" }
+    }
+}
+
+/**
+ * Optional context provided to the scorer for computing novelty
+ * and context change signals.
+ */
+data class ScoringContext(
+    val priorEvents: List<Event> = emptyList(),
+    val currentTopicSummaries: List<String> = emptyList()
+)
+
+/**
+ * Deterministic EventScorer that evaluates event significance
+ * across five dimensions: relevance, urgency, novelty, contextChange, and confidence.
+ *
+ * The scorer does NOT make decision-state selections (DROP/COMPRESS/QUEUE/REASON).
+ * Those decisions belong to DecisionEngine.
+ *
+ * Weights are centralized, documented, and sum to 1.0 for the composite score.
+ */
+class EventScorer {
+
+    companion object {
+        /**
+         * Weights for the four composite scoring dimensions.
+         * These sum to 1.0 and are documented here for transparency.
+         * Adjusting these should be done centrally.
+         */
+        const val WEIGHT_RELEVANCE = 0.30
+        const val WEIGHT_URGENCY = 0.30
+        const val WEIGHT_NOVELTY = 0.20
+        const val WEIGHT_CONTEXT_CHANGE = 0.20
+
+        /**
+         * Deadline/urgency keywords that boost urgency signal.
+         * Simple string matching - no NLP framework.
+         */
+        private val URGENCY_KEYWORDS = setOf(
+            "deadline", "due", "urgent", "asap", "immediately", "now",
+            "today", "tomorrow", "this week", "emergency", "critical",
+            "overdue", "expires", "expiration", "deadline moved", "deadline changed",
+            "reschedule", "moved up", "earlier", "sooner"
+        )
+
+        /**
+         * Context-change keywords indicating an update/correction.
+         */
+        private val CONTEXT_CHANGE_KEYWORDS = setOf(
+            "changed", "updated", "moved", "rescheduled", "modified",
+            "corrected", "revised", "cancelled", "postponed", "delayed",
+            "new date", "new time", "instead", "rather than"
+        )
+
+        /**
+         * Sources that inherently carry higher relevance for productivity.
+         */
+        private val HIGH_RELEVANCE_SOURCES = setOf(
+            EventSource.NOTIFICATION,
+            EventSource.CAMERA,
+            EventSource.VOICE
+        )
+    }
+
+    /**
+     * Scores an event and returns a detailed ScoringResult.
+     *
+     * @param event The event to score
+     * @param context Optional scoring context for novelty/context-change
+     * @return ScoringResult with all dimension scores
+     */
+    fun score(event: Event, context: ScoringContext = ScoringContext()): ScoringResult {
+        val rel = computeRelevance(event)
+        val urg = computeUrgency(event)
+        val nov = computeNovelty(event, context)
+        val ctxChange = computeContextChange(event)
+        val conf = computeConfidence(event, rel, urg, nov, ctxChange)
+
+        val overall = (rel * WEIGHT_RELEVANCE +
+                       urg * WEIGHT_URGENCY +
+                       nov * WEIGHT_NOVELTY +
+                       ctxChange * WEIGHT_CONTEXT_CHANGE).coerceIn(0.0, 1.0)
+
+        return ScoringResult(
+            eventId = event.id,
+            overallScore = overall,
+            relevance = rel,
+            urgency = urg,
+            novelty = nov,
+            contextChange = ctxChange,
+            confidence = conf,
+            scoringContext = context
+        )
+    }
+
+    /**
+     * Relevance: How pertinent is this event to the user's productivity?
+     * Based on source type, content length, and keyword signals.
+     */
+    private fun computeRelevance(event: Event): Double {
+        var score = 0.0
+
+        // Source-based relevance
+        score += when (event.source) {
+            EventSource.NOTIFICATION -> 0.4
+            EventSource.CAMERA -> 0.35
+            EventSource.VOICE -> 0.35
+            EventSource.MANUAL -> 0.5
+            EventSource.SIMULATOR -> 0.2
+        }
+
+        // Text length signal (longer = potentially more content)
+        val textLength = event.text.trim().length
+        when {
+            textLength > 200 -> score += 0.2
+            textLength > 100 -> score += 0.15
+            textLength > 50 -> score += 0.1
+            textLength > 10 -> score += 0.05
+            else -> score += 0.0
+        }
+
+        // Type signal - task/calendar related types are more relevant
+        val typeLower = event.type.lowercase()
+        if (typeLower.contains("task") || typeLower.contains("deadline") ||
+            typeLower.contains("meeting") || typeLower.contains("calendar") ||
+            typeLower.contains("reminder") || typeLower.contains("commitment")) {
+            score += 0.15
+        }
+
+        return score.coerceIn(0.0, 1.0)
+    }
+
+    /**
+     * Urgency: Does this event require timely attention?
+     * Based on explicit deadline/time language and urgent keywords.
+     */
+    private fun computeUrgency(event: Event): Double {
+        val textLower = event.text.lowercase()
+        var score = 0.0
+
+        // Keyword-based urgency
+        val urgencyMatches = URGENCY_KEYWORDS.count { textLower.contains(it) }
+        score += (urgencyMatches * 0.15).coerceAtMost(0.6)
+
+        // Time pattern detection (simple regex for dates/times)
+        if (textLower.contains(Regex("\\b\\d{1,2}:\\d{2}\\s*(am|pm)?\\b")) ||
+            textLower.contains(Regex("\\b(today|tomorrow|this\\s+week|next\\s+week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\\b"))) {
+            score += 0.25
+        }
+
+        // Deadline type explicitly mentioned
+        if (event.type.lowercase().contains("deadline") ||
+            event.type.lowercase().contains("due")) {
+            score += 0.3
+        }
+
+        return score.coerceIn(0.0, 1.0)
+    }
+
+    /**
+     * Novelty: How new/different is this event compared to prior events?
+     * Requires ScoringContext with prior events.
+     */
+    private fun computeNovelty(event: Event, context: ScoringContext): Double {
+        if (context.priorEvents.isEmpty()) {
+            // No prior context - treat as fully novel
+            return 1.0
+        }
+
+        // Simple text similarity check against recent prior events
+        val eventTextLower = event.text.lowercase().words().toSet()
+        if (eventTextLower.isEmpty()) return 0.5
+
+        var maxSimilarity = 0.0
+        for (prior in context.priorEvents) {
+            val priorTextLower = prior.text.lowercase().words().toSet()
+            if (priorTextLower.isEmpty()) continue
+
+            val intersection = eventTextLower.intersect(priorTextLower).size
+            val union = eventTextLower.union(priorTextLower).size
+            val similarity = if (union > 0) intersection.toDouble() / union else 0.0
+            maxSimilarity = maxOf(maxSimilarity, similarity)
+        }
+
+        // Novelty is inverse of max similarity
+        return (1.0 - maxSimilarity).coerceIn(0.0, 1.0)
+    }
+
+    /**
+     * Context Change: Does this event indicate a change to existing context?
+     * Looks for update/correction/reschedule language.
+     */
+    private fun computeContextChange(event: Event): Double {
+        val textLower = event.text.lowercase()
+        var score = 0.0
+
+        val changeMatches = CONTEXT_CHANGE_KEYWORDS.count { textLower.contains(it) }
+        score += (changeMatches * 0.2).coerceAtMost(0.8)
+
+        // Type-based signal
+        if (event.type.lowercase().contains("change") ||
+            event.type.lowercase().contains("update") ||
+            event.type.lowercase().contains("modify")) {
+            score += 0.3
+        }
+
+        return score.coerceIn(0.0, 1.0)
+    }
+
+    /**
+     * Confidence: How confident are we in this scoring interpretation?
+     * Based on signal strength and availability of evidence.
+     */
+    private fun computeConfidence(
+        event: Event,
+        relevance: Double,
+        urgency: Double,
+        novelty: Double,
+        contextChange: Double
+    ): Double {
+        var score = 0.0
+
+        // Text availability and quality
+        val text = event.text.trim()
+        when {
+            text.isEmpty() -> score += 0.0
+            text.length < 10 -> score += 0.15
+            text.length < 50 -> score += 0.3
+            else -> score += 0.5
+        }
+
+        // Source reliability
+        score += when (event.source) {
+            EventSource.MANUAL -> 0.2
+            EventSource.NOTIFICATION -> 0.15
+            EventSource.CAMERA -> 0.1
+            EventSource.VOICE -> 0.1
+            EventSource.SIMULATOR -> 0.05
+        }
+
+        // Signal coherence - if multiple dimensions agree, higher confidence
+        val signals = listOf(relevance, urgency, novelty, contextChange)
+        val nonZeroSignals = signals.count { it > 0.1 }
+        score += (nonZeroSignals * 0.05).coerceAtMost(0.2)
+
+        return score.coerceIn(0.0, 1.0)
+    }
+}
+
+/**
+ * Extension for simple word tokenization.
+ */
+private fun String.words(): List<String> = this.split(Regex("\\W+")).filter { it.isNotBlank() }
