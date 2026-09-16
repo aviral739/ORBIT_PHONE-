@@ -1,0 +1,71 @@
+package core.decision
+
+/**
+ * Represents the four architectural decision states in the ORBIT pipeline.
+ * These are not arbitrary labels but define the downstream processing path.
+ */
+sealed class DecisionState {
+    /**
+     * The event is not sufficiently relevant or useful to retain for further reasoning.
+     */
+    object DROP : DecisionState()
+
+    /**
+     * The event contains useful information but can be represented/grouped in a reduced form
+     * instead of triggering full reasoning.
+     */
+    object COMPRESS : DecisionState()
+
+    /**
+     * The event is relevant and should be retained for later processing,
+     * but does not currently require deeper reasoning.
+     */
+    object QUEUE : DecisionState()
+
+    /**
+     * The event requires contextual/deeper reasoning, potentially including
+     * escalation to the laptop reasoning layer.
+     */
+    object REASON : DecisionState()
+
+    /**
+     * Returns the canonical string representation of this decision state.
+     * Matches the enum values in the shared Decision contract and prompts.json.
+     */
+    override fun toString(): String = when (this) {
+        is DROP -> "DROP"
+        is COMPRESS -> "COMPRESS"
+        is QUEUE -> "QUEUE"
+        is REASON -> "REASON"
+    }
+}
+
+/**
+ * Represents the complete decision result as defined by the shared ORBIT Decision contract.
+ * This is the output of DecisionEngine and input to ContextEngine.
+ *
+ * Contract fields:
+ * - eventId: ID of the event this decision applies to
+ * - state: The decision state (DROP, COMPRESS, QUEUE, REASON)
+ * - score: Numerical score from EventScorer (0.0 - 1.0)
+ * - confidence: Confidence in this decision (0.0 - 1.0)
+ * - reason: Human-readable rationale for the decision
+ * - requiresContext: Whether ContextEngine should process this event
+ * - requiresModel: Whether model inference is needed for this event
+ */
+data class DecisionResult(
+    val eventId: String,
+    val state: DecisionState,
+    val score: Double,
+    val confidence: Double,
+    val reason: String,
+    val requiresContext: Boolean,
+    val requiresModel: Boolean
+) {
+    init {
+        require(score in 0.0..1.0) { "Score must be between 0.0 and 1.0" }
+        require(confidence in 0.0..1.0) { "Confidence must be between 0.0 and 1.0" }
+        require(eventId.isNotBlank()) { "Event ID must not be blank" }
+        require(reason.isNotBlank()) { "Reason must not be blank" }
+    }
+}
