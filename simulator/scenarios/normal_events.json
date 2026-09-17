@@ -1,12 +1,38 @@
 [
-  { "id": "evt_001", "type": "notification", "content": "Meeting in 10 mins" },
-  { "id": "evt_002", "type": "chat", "content": "Are we still on for lunch?" },
-  { "id": "evt_003", "type": "notification", "content": "New email from Boss" },
-  { "id": "evt_004", "type": "chat", "content": "Can you review my PR?" },
-  { "id": "evt_005", "type": "notification", "content": "System update available" },
-  { "id": "evt_006", "type": "chat", "content": "Thanks!" },
-  { "id": "evt_007", "type": "notification", "content": "Battery low" },
-  { "id": "evt_008", "type": "chat", "content": "See you tomorrow" },
-  { "id": "evt_009", "type": "notification", "content": "Daily report generated" },
-  { "id": "evt_010", "type": "chat", "content": "Ok." }
+  {
+    "id": "normal_evt_001",
+    "type": "NOTIFICATION",
+    "timestamp": "2026-11-01T08:00:00Z",
+    "content": "Good morning. Your daily summary is ready."
+  },
+  {
+    "id": "normal_evt_002",
+    "type": "CALENDAR_SCHEDULING",
+    "timestamp": "2026-11-01T09:00:00Z",
+    "content": "New invitation: Team Standup at 10:00 AM."
+  },
+  {
+    "id": "normal_evt_003",
+    "type": "TASK_MANAGEMENT",
+    "timestamp": "2026-11-01T09:30:00Z",
+    "content": "Task assigned: Update the user manual by EOD."
+  },
+  {
+    "id": "normal_evt_004",
+    "type": "COMMUNICATION",
+    "timestamp": "2026-11-01T10:15:00Z",
+    "content": "Can someone share the link to the design doc?"
+  },
+  {
+    "id": "normal_evt_005",
+    "type": "STATE_MEMORY",
+    "timestamp": "2026-11-01T11:00:00Z",
+    "content": "Device connected to 'Office_WiFi'."
+  },
+  {
+    "id": "normal_evt_006",
+    "type": "CAPTURE_OCR",
+    "timestamp": "2026-11-01T11:45:00Z",
+    "content": "Receipt total: $45.00."
+  }
 ]
