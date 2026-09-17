@@ -1,4 +1,14 @@
 [
-  { "id": "evt_011", "type": "chat", "content": "The deadline has been moved to Friday.", "timestamp": "2023-10-01T10:00:00Z" },
-  { "id": "evt_012", "type": "chat", "content": "Wait, we need it by Wednesday now.", "timestamp": "2023-10-02T14:00:00Z" }
+  {
+    "id": "deadline_evt_001",
+    "type": "TASK_MANAGEMENT",
+    "timestamp": "2026-09-17T09:00:00Z",
+    "content": "Submit the project report by 2026-09-20 at 17:00 UTC."
+  },
+  {
+    "id": "deadline_evt_002",
+    "type": "TASK_MANAGEMENT",
+    "timestamp": "2026-09-17T11:00:00Z",
+    "content": "The project report deadline has been changed to 2026-09-22 at 17:00 UTC."
+  }
 ]
