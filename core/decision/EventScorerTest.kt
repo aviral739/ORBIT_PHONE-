@@ -3,174 +3,289 @@ package core.decision
 import java.time.Instant
 
 /**
- * Manual tests for EventScorer.
- * Run with: kotlinc -script EventScorerTest.kt (if kotlinc available)
+ * EventScorer unit tests.
+ * Run with: kotlinc -script core/decision/EventScorerTest.kt
  * Or compile and run via any Kotlin runner.
  *
- * These tests verify:
- * 1. Score range - all dimensions within 0.0..1.0
- * 2. Determinism - same input produces same output
- * 3. Deadline/urgency signal - explicit deadline scores higher urgency
- * 4. Context-change signal - deadline change produces contextChange signal
- * 5. Novelty - repeated events score lower novelty
- * 6. Blank/minimal input - no crash
- * 7. Unknown metadata/type - deterministic and safe
- * 8. No decision-state selection - returns scoring info only
+ * Tests cover all required behavioral checks:
+ * A. High urgency
+ * B. Normal informational event
+ * C. Context change
+ * D. Novel event with no prior history
+ * E. Repeated event has lower novelty
+ * F. Empty/whitespace text
+ * G. Deadline event type
+ * H. 30/30/20/20 overall weighting
+ * I. Score bounds
+ * J. ScoringResult does not select DecisionState
+ * K. Deterministic output
  */
+
+// Simple test result tracking
+class TestResult(val name: String, val passed: Boolean, val message: String = "")
+
 fun main() {
     val scorer = EventScorer()
     val baseTime = Instant.parse("2026-09-14T10:30:00Z")
+    val results = mutableListOf<TestResult>()
 
-    println("=== EventScorer Tests ===\n")
-
-    // Test 1: Score range validation
-    println("Test 1: Score range validation")
-    val event1 = Event(
-        id = "evt_001",
-        source = EventSource.NOTIFICATION,
-        type = "deadline_update",
-        text = "Project deadline moved to Friday",
-        timestamp = baseTime
-    )
-    val result1 = scorer.score(event1)
-    assert(result1.overallScore in 0.0..1.0) { "Overall score out of range: ${result1.overallScore}" }
-    assert(result1.relevance in 0.0..1.0) { "Relevance out of range: ${result1.relevance}" }
-    assert(result1.urgency in 0.0..1.0) { "Urgency out of range: ${result1.urgency}" }
-    assert(result1.novelty in 0.0..1.0) { "Novelty out of range: ${result1.novelty}" }
-    assert(result1.contextChange in 0.0..1.0) { "Context change out of range: ${result1.contextChange}" }
-    assert(result1.confidence in 0.0..1.0) { "Confidence out of range: ${result1.confidence}" }
-    println("  ✓ All scores within 0.0..1.0")
-
-    // Test 2: Determinism
-    println("\nTest 2: Determinism")
-    val result1a = scorer.score(event1)
-    val result1b = scorer.score(event1)
-    assert(result1a.overallScore == result1b.overallScore) { "Non-deterministic overall score" }
-    assert(result1a.relevance == result1b.relevance) { "Non-deterministic relevance" }
-    assert(result1a.urgency == result1b.urgency) { "Non-deterministic urgency" }
-    assert(result1a.novelty == result1b.novelty) { "Non-deterministic novelty" }
-    assert(result1a.contextChange == result1b.contextChange) { "Non-deterministic contextChange" }
-    assert(result1a.confidence == result1b.confidence) { "Non-deterministic confidence" }
-    println("  ✓ Same input produces identical output")
-
-    // Test 3: Deadline/urgency signal
-    println("\nTest 3: Deadline/urgency signal")
-    val deadlineEvent = Event(
-        id = "evt_deadline",
-        source = EventSource.NOTIFICATION,
-        type = "deadline",
-        text = "Project deadline is tomorrow at 5pm, urgent",
-        timestamp = baseTime
-    )
-    val normalEvent = Event(
-        id = "evt_normal",
-        source = EventSource.NOTIFICATION,
-        type = "info",
-        text = "Welcome to our newsletter",
-        timestamp = baseTime
-    )
-    val deadlineResult = scorer.score(deadlineEvent)
-    val normalResult = scorer.score(normalEvent)
-    assert(deadlineResult.urgency > normalResult.urgency) {
-        "Deadline event urgency (${deadlineResult.urgency}) should exceed normal (${normalResult.urgency})"
+    fun test(name: String, block: () -> Boolean): TestResult {
+        try {
+            val passed = block()
+            val result = TestResult(name, passed)
+            results.add(result)
+            println("${if (passed) "✓" else "✗"} $name")
+            if (!passed) println("   FAILED")
+            return result
+        } catch (e: Exception) {
+            val result = TestResult(name, false, e.message ?: e.toString())
+            results.add(result)
+            println("✗ $name")
+            println("   EXCEPTION: ${e.message ?: e}")
+            return result
+        }
     }
-    println("  ✓ Deadline event urgency (${String.format("%.2f", deadlineResult.urgency)}) > normal (${String.format("%.2f", normalResult.urgency)})")
 
-    // Test 4: Context-change signal
-    println("\nTest 4: Context-change signal")
-    val changeEvent = Event(
-        id = "evt_change",
-        source = EventSource.NOTIFICATION,
-        type = "deadline_change",
-        text = "Meeting moved from 2pm to 4pm, rescheduled",
-        timestamp = baseTime
-    )
-    val changeResult = scorer.score(changeEvent)
-    assert(changeResult.contextChange > 0.3) {
-        "Context change event should have significant contextChange signal: ${changeResult.contextChange}"
+    fun assertTrue(msg: String, condition: Boolean): Boolean {
+        if (!condition) println("   ASSERTION FAILED: $msg")
+        return condition
     }
-    println("  ✓ Context-change event produces contextChange signal: ${String.format("%.2f", changeResult.contextChange)}")
 
-    // Test 5: Novelty with prior context
-    println("\nTest 5: Novelty with prior context")
-    val priorEvent = Event(
-        id = "evt_prior",
-        source = EventSource.NOTIFICATION,
-        type = "deadline_update",
-        text = "Project deadline moved to Friday",
-        timestamp = baseTime.minusSeconds(3600)
-    )
-    val repeatedEvent = Event(
-        id = "evt_repeated",
-        source = EventSource.NOTIFICATION,
-        type = "deadline_update",
-        text = "Project deadline moved to Friday",
-        timestamp = baseTime
-    )
-    val newEvent = Event(
-        id = "evt_new",
-        source = EventSource.NOTIFICATION,
-        type = "deadline_update",
-        text = "New task assigned for Monday",
-        timestamp = baseTime
-    )
-    val context = ScoringContext(priorEvents = listOf(priorEvent))
-    val repeatedResult = scorer.score(repeatedEvent, context)
-    val newResult = scorer.score(newEvent, context)
-    assert(newResult.novelty > repeatedResult.novelty) {
-        "New event novelty (${newResult.novelty}) should exceed repeated (${repeatedResult.novelty})"
+    fun assertEquals(msg: String, expected: Any, actual: Any): Boolean {
+        if (expected != actual) {
+            println("   ASSERTION FAILED: $msg (expected=$expected, actual=$actual)")
+            return false
+        }
+        return true
     }
-    println("  ✓ New event novelty (${String.format("%.2f", newResult.novelty)}) > repeated (${String.format("%.2f", repeatedResult.novelty)})")
 
-    // Test 6: Blank/minimal input
-    println("\nTest 6: Blank/minimal input")
-    val minimalEvent = Event(
-        id = "evt_minimal",
-        source = EventSource.SIMULATOR,
-        type = "test",
-        text = "x",
-        timestamp = baseTime
-    )
-    val minimalResult = scorer.score(minimalEvent)
-    assert(minimalResult.overallScore in 0.0..1.0) { "Minimal event crashed or out of range" }
-    println("  ✓ Minimal event handled without crash, score: ${String.format("%.2f", minimalResult.overallScore)}")
+    println("=== EventScorer Unit Tests ===\n")
 
-    // Test 7: Unknown metadata/type
-    println("\nTest 7: Unknown metadata/type")
-    val unknownEvent = Event(
-        id = "evt_unknown",
-        source = EventSource.SIMULATOR,
-        type = "completely_unknown_type_xyz",
-        text = "Some random text with no known keywords",
-        timestamp = baseTime,
-        metadata = mapOf("unknown_key" to "unknown_value")
-    )
-    val unknownResult = scorer.score(unknownEvent)
-    assert(unknownResult.overallScore in 0.0..1.0) { "Unknown type event crashed or out of range" }
-    println("  ✓ Unknown type handled, score: ${String.format("%.2f", unknownResult.overallScore)}")
+    // A. High urgency
+    test("A: High urgency event scores high urgency") {
+        val event = Event(
+            id = "evt_high_urgency",
+            source = EventSource.NOTIFICATION,
+            type = "deadline",
+            text = "Project deadline is today at 5pm, urgent",
+            timestamp = baseTime
+        )
+        val result = scorer.score(event)
+        assertTrue("urgency > 0.6", result.urgency > 0.6) &&
+        assertTrue("overall in bounds", result.overallScore in 0.0..1.0)
+    }
 
-    // Test 8: No decision-state selection
-    println("\nTest 8: No decision-state selection")
-    val anyEvent = Event(
-        id = "evt_any",
-        source = EventSource.NOTIFICATION,
-        type = "any",
-        text = "Any event text here",
-        timestamp = baseTime
-    )
-    val anyResult = scorer.score(anyEvent)
-    // Verify ScoringResult does not contain DecisionState
-    val resultClass = anyResult::class
-    val hasDecisionState = resultClass.memberProperties.any { it.name == "state" && it.returnType.classifier?.simpleName == "DecisionState" }
-    assert(!hasDecisionState) { "ScoringResult should not contain DecisionState" }
-    // Verify it has scoring dimensions
-    assert(anyResult.overallScore in 0.0..1.0)
-    assert(anyResult.relevance in 0.0..1.0)
-    assert(anyResult.urgency in 0.0..1.0)
-    assert(anyResult.novelty in 0.0..1.0)
-    assert(anyResult.contextChange in 0.0..1.0)
-    assert(anyResult.confidence in 0.0..1.0)
-    println("  ✓ Returns ScoringResult with scoring dimensions only, no DecisionState")
+    // B. Normal informational event
+    test("B: Normal informational event has low urgency") {
+        val event = Event(
+            id = "evt_normal",
+            source = EventSource.NOTIFICATION,
+            type = "info",
+            text = "Welcome to our weekly newsletter",
+            timestamp = baseTime
+        )
+        val result = scorer.score(event)
+        assertTrue("urgency < 0.4", result.urgency < 0.4)
+    }
 
-    println("\n=== All Tests Passed ===")
+    // C. Context change
+    test("C: Context change event produces significant contextChange signal") {
+        val event = Event(
+            id = "evt_change",
+            source = EventSource.NOTIFICATION,
+            type = "deadline_change",
+            text = "Meeting moved from 3 PM to 5 PM, rescheduled",
+            timestamp = baseTime
+        )
+        val result = scorer.score(event)
+        assertTrue("contextChange > 0.4", result.contextChange > 0.4)
+    }
+
+    // D. Novel event with no prior history
+    test("D: Novel event with no prior history has novelty = 1.0") {
+        val event = Event(
+            id = "evt_novel",
+            source = EventSource.NOTIFICATION,
+            type = "task",
+            text = "New task assigned for Monday morning",
+            timestamp = baseTime
+        )
+        val result = scorer.score(event, ScoringContext())
+        assertEquals("novelty == 1.0", 1.0, result.novelty)
+    }
+
+    // E. Repeated event has lower novelty
+    test("E: Repeated event has lower novelty than new event") {
+        val priorEvent = Event(
+            id = "evt_prior",
+            source = EventSource.NOTIFICATION,
+            type = "deadline_update",
+            text = "Project deadline moved to Friday",
+            timestamp = baseTime.minusSeconds(3600)
+        )
+        val context = ScoringContext(priorEvents = listOf(priorEvent))
+
+        val repeatedEvent = Event(
+            id = "evt_repeated",
+            source = EventSource.NOTIFICATION,
+            type = "deadline_update",
+            text = "Project deadline moved to Friday",
+            timestamp = baseTime
+        )
+        val newEvent = Event(
+            id = "evt_new",
+            source = EventSource.NOTIFICATION,
+            type = "deadline_update",
+            text = "Completely different task for next week",
+            timestamp = baseTime
+        )
+
+        val repeatedResult = scorer.score(repeatedEvent, context)
+        val newResult = scorer.score(newEvent, context)
+
+        assertTrue("new novelty > repeated novelty", newResult.novelty > repeatedResult.novelty) &&
+        assertTrue("repeated novelty < 0.3", repeatedResult.novelty < 0.3)
+    }
+
+    // F. Empty/whitespace text
+    test("F: Empty text handled without crash") {
+        val event = Event(
+            id = "evt_empty",
+            source = EventSource.SIMULATOR,
+            type = "test",
+            text = "",
+            timestamp = baseTime
+        )
+        val result = scorer.score(event)
+        assertTrue("overall in bounds", result.overallScore in 0.0..1.0) &&
+        assertTrue("relevance in bounds", result.relevance in 0.0..1.0)
+    }
+
+    test("F: Whitespace-only text handled without crash") {
+        val event = Event(
+            id = "evt_whitespace",
+            source = EventSource.SIMULATOR,
+            type = "test",
+            text = "   \n\t  ",
+            timestamp = baseTime
+        )
+        val result = scorer.score(event)
+        assertTrue("overall in bounds", result.overallScore in 0.0..1.0) &&
+        assertTrue("relevance in bounds", result.relevance in 0.0..1.0)
+    }
+
+    // G. Deadline event type
+    test("G: Deadline event type increases urgency/relevance vs non-deadline type") {
+        val deadlineEvent = Event(
+            id = "evt_deadline_type",
+            source = EventSource.NOTIFICATION,
+            type = "deadline",
+            text = "Submit report by Friday",
+            timestamp = baseTime
+        )
+        val nonDeadlineEvent = Event(
+            id = "evt_non_deadline",
+            source = EventSource.NOTIFICATION,
+            type = "info",
+            text = "Submit report by Friday",
+            timestamp = baseTime
+        )
+        val deadlineResult = scorer.score(deadlineEvent)
+        val nonDeadlineResult = scorer.score(nonDeadlineEvent)
+
+        assertTrue("deadline urgency >= non-deadline", deadlineResult.urgency >= nonDeadlineResult.urgency) &&
+        assertTrue("deadline relevance >= non-deadline", deadlineResult.relevance >= nonDeadlineResult.relevance)
+    }
+
+    // H. 30/30/20/20 weighting
+    test("H: Overall score matches 30/30/20/20 weighting") {
+        val event = Event(
+            id = "evt_weighted",
+            source = EventSource.MANUAL,
+            type = "deadline",
+            text = "Critical deadline today at 5pm - must complete now",
+            timestamp = baseTime
+        )
+        val result = scorer.score(event)
+        val expected = (result.relevance * 0.30 +
+                        result.urgency * 0.30 +
+                        result.novelty * 0.20 +
+                        result.contextChange * 0.20).coerceIn(0.0, 1.0)
+        assertTrue("weighting matches", Math.abs(result.overallScore - expected) < 0.001)
+    }
+
+    // I. Score bounds
+    test("I: All scores bounded in [0.0, 1.0] across multiple events") {
+        val testEvents = listOf(
+            Event("e1", EventSource.NOTIFICATION, "deadline", "Critical deadline today urgent asap", baseTime),
+            Event("e2", EventSource.SIMULATOR, "test", "x", baseTime),
+            Event("e3", EventSource.MANUAL, "meeting", "Meeting moved from 3 PM to 5 PM rescheduled", baseTime),
+            Event("e4", EventSource.CAMERA, "ocr", "Some OCR text with dates and times", baseTime)
+        )
+        var allPassed = true
+        for ((idx, event) in testEvents.withIndex()) {
+            val result = scorer.score(event)
+            allPassed &= assertTrue("Event $idx overall", result.overallScore in 0.0..1.0)
+            allPassed &= assertTrue("Event $idx relevance", result.relevance in 0.0..1.0)
+            allPassed &= assertTrue("Event $idx urgency", result.urgency in 0.0..1.0)
+            allPassed &= assertTrue("Event $idx novelty", result.novelty in 0.0..1.0)
+            allPassed &= assertTrue("Event $idx contextChange", result.contextChange in 0.0..1.0)
+            allPassed &= assertTrue("Event $idx confidence", result.confidence in 0.0..1.0)
+        }
+        allPassed
+    }
+
+    // J. No DecisionState selection
+    test("J: ScoringResult contains scoring dimensions only, no DecisionState") {
+        val event = Event(
+            id = "evt_any",
+            source = EventSource.NOTIFICATION,
+            type = "any",
+            text = "Any event text here",
+            timestamp = baseTime
+        )
+        val result = scorer.score(event)
+
+        // Verify required public scoring properties exist
+        val props = result::class.memberProperties.map { it.name }.toSet()
+        val requiredDimensions = setOf(
+            "eventId", "overallScore", "relevance", "urgency",
+            "novelty", "contextChange", "confidence", "scoringContext"
+        )
+        assertTrue("has all scoring dimensions", requiredDimensions.subsetOf(props)) &&
+        assertTrue("no 'state' property", !props.contains("state")) &&
+        assertTrue("no DecisionState property", !props.any { it.contains("DecisionState", ignoreCase = true) })
+    }
+
+    // K. Deterministic output
+    test("K: Deterministic - same input produces identical output") {
+        val event = Event(
+            id = "evt_det",
+            source = EventSource.NOTIFICATION,
+            type = "deadline",
+            text = "Project deadline tomorrow at 3pm",
+            timestamp = baseTime
+        )
+        val r1 = scorer.score(event)
+        val r2 = scorer.score(event)
+        assertTrue("overallScore", r1.overallScore == r2.overallScore) &&
+        assertTrue("relevance", r1.relevance == r2.relevance) &&
+        assertTrue("urgency", r1.urgency == r2.urgency) &&
+        assertTrue("novelty", r1.novelty == r2.novelty) &&
+        assertTrue("contextChange", r1.contextChange == r2.contextChange) &&
+        assertTrue("confidence", r1.confidence == r2.confidence)
+    }
+
+    // Summary
+    println("\n=== Summary ===")
+    val passed = results.count { it.passed }
+    val failed = results.size - passed
+    println("Total: ${results.size} | Passed: $passed | Failed: $failed")
+    if (failed > 0) {
+        println("\nFailed tests:")
+        results.filter { !it.passed }.forEach { println("  - ${it.name}${if (it.message.isNotBlank()) ": ${it.message}" else ""}") }
+        exitProcess(1)
+    } else {
+        println("All tests passed.")
+    }
 }
