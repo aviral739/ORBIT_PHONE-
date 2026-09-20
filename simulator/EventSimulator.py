@@ -50,6 +50,7 @@ class EventSimulator:
         """
         Produce deterministic event data from loaded fixtures.
         Preserves source/evidence info, ensures predictability, blocks external actions.
+        Outputs in canonical Event contract format.
         """
         deterministic_stream = []
         for seq, evt in enumerate(events):
@@ -72,27 +73,54 @@ class EventSimulator:
                 timestamp = f"2026-01-01T10:{seq:02d}:00Z"
                 is_simulated_timestamp = True
 
-            # Extract content to match downstream contract 'event_text'
+            # Extract content to match downstream contract 'text'
             event_text = evt.get("content", evt.get("data", ""))
 
-            # Map input type to domain/source conceptually recognized by ORBIT if possible
-            source_type = evt.get("type", "unknown").upper()
+            # Legacy fixture adapter: separate source and type
+            raw_source = evt.get("source")
+            raw_type = evt.get("type")
 
+            if raw_source is not None and raw_type is not None:
+                # Future-proof for when fixtures supply both explicitly
+                source = str(raw_source).lower()
+                event_type = str(raw_type).lower()
+            else:
+                # Legacy fallback logic
+                # Fixture 'type' (e.g. NOTIFICATION) maps to canonical 'source'
+                source = str(raw_type or evt.get("source_type", "simulator")).lower()
+                event_type = "unknown"
+
+                # Semantic normalization heuristic based on fixture text
+                text_lower = event_text.lower()
+                if "deadline" in text_lower and ("changed" in text_lower or "moved" in text_lower):
+                    event_type = "deadline_update"
+                elif "moved from" in text_lower or "moved to" in text_lower or "scheduled for" in text_lower:
+                    event_type = "schedule_change"
+                elif "remind" in text_lower or "assigned" in text_lower or "submit the project report" in text_lower or "expense report" in text_lower:
+                    event_type = "task_request"
+                elif "battery" in text_lower or "server is down" in text_lower or "update available" in text_lower:
+                    event_type = "system_alert"
+                elif "location:" in text_lower:
+                    event_type = "state_update"
+
+            metadata = {
+                "is_simulated_id": is_simulated_id,
+                "is_simulated_timestamp": is_simulated_timestamp,
+                "sandbox": True,
+                "external_side_effects_blocked": True,
+            }
+
+            # Canonical Event output payload
             simulated_event = {
-                "event_id": event_id,
-                "sequence_number": seq,
-                "source_type": source_type,
-                "event_text": event_text,
-                "timestamp": timestamp,
-                "evidence_metadata": {
-                    "is_simulated_id": is_simulated_id,
-                    "is_simulated_timestamp": is_simulated_timestamp,
-                    "sandbox": True,
-                    "external_side_effects_blocked": True,
-                    # We explicitly omit a full 'original_payload' copy to avoid bloating
-                    # the payload unnecessarily, since all downstream requirements
-                    # (event_text, source_type, timestamp) have been securely projected out.
-                }
+                "event": {
+                    "id": event_id,
+                    "source": source,
+                    "type": event_type,
+                    "text": event_text,
+                    "timestamp": timestamp,
+                    "metadata": metadata
+                },
+                "sequence_number": seq
             }
             deterministic_stream.append(simulated_event)
 
