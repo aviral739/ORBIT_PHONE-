@@ -1,34 +1,50 @@
-CREATE TABLE events (
-    id TEXT PRIMARY KEY,
-    type TEXT NOT NULL,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    data TEXT,
-    importance REAL,
-    status TEXT
-);
+-- database/schema/orbit_schema.sql
+-- Consolidated schema
 
-CREATE TABLE evidence (
-    id TEXT PRIMARY KEY,
-    event_id TEXT,
-    path TEXT,
-    type TEXT,
-    FOREIGN KEY (event_id) REFERENCES events(id)
+CREATE TABLE events (
+    event_id TEXT PRIMARY KEY,
+    sequence_number INTEGER,
+    source_type TEXT NOT NULL,
+    event_text TEXT,
+    timestamp DATETIME NOT NULL,
+    evidence_metadata TEXT,
+    processed_status TEXT DEFAULT 'PENDING',
+    office_kit_sync_status TEXT DEFAULT 'pending'
 );
 
 CREATE TABLE commitments (
     id TEXT PRIMARY KEY,
-    event_id TEXT,
-    deadline DATETIME,
-    description TEXT,
-    FOREIGN KEY (event_id) REFERENCES events(id)
+    description TEXT NOT NULL,
+    target_time DATETIME,
+    confidence REAL NOT NULL,
+    status TEXT DEFAULT 'ACTIVE',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE commitment_evidence (
+    commitment_id TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    PRIMARY KEY (commitment_id, event_id),
+    FOREIGN KEY (commitment_id) REFERENCES commitments(id) ON DELETE CASCADE,
+    FOREIGN KEY (event_id) REFERENCES events(event_id) ON DELETE CASCADE
+);
+
+CREATE TABLE conflicts (
+    id TEXT PRIMARY KEY,
+    existing_commitment_id TEXT NOT NULL,
+    new_description TEXT NOT NULL,
+    message TEXT NOT NULL,
+    status TEXT DEFAULT 'UNRESOLVED',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (existing_commitment_id) REFERENCES commitments(id) ON DELETE CASCADE
 );
 
 CREATE TABLE audit_log (
     id TEXT PRIMARY KEY,
-    action TEXT,
+    action_type TEXT NOT NULL,
+    event_id TEXT,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    details TEXT
+    details TEXT,
+    FOREIGN KEY (event_id) REFERENCES events(event_id) ON DELETE SET NULL
 );
-
-CREATE INDEX idx_events_timestamp ON events(timestamp);
-CREATE INDEX idx_commitments_deadline ON commitments(deadline);
