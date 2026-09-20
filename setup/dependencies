@@ -1,5 +1,10 @@
+# Active Development Dependencies
+- Python 3.8+ (Required for EventSimulator)
+- SQLite3 (Required for schema validation)
+
+# Pending Android/Integration Dependencies
 - CameraX
 - ML Kit
 - Room DB
 - Python bridge
-- Qwen/Whisper specs
+- Qwen/Whisper offline models (specs pending)
