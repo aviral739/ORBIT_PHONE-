@@ -76,20 +76,31 @@ class EventSimulator:
             # Extract content to match downstream contract 'text'
             event_text = evt.get("content", evt.get("data", ""))
 
+            # Canonical allowed sources
+            VALID_SOURCES = {"voice", "notification", "camera", "manual", "simulator"}
+
             # Legacy fixture adapter: separate source and type
             raw_source = evt.get("source")
             raw_type = evt.get("type")
 
+            # 1. Normalize Source
+            source = "simulator"
+            if raw_source is not None:
+                candidate_source = str(raw_source).lower()
+                if candidate_source in VALID_SOURCES:
+                    source = candidate_source
+            elif raw_type is not None:
+                # Legacy fallback: check if the old 'type' was actually a valid source
+                candidate_source = str(raw_type).lower()
+                if candidate_source in VALID_SOURCES:
+                    source = candidate_source
+
+            # 2. Normalize Type
+            event_type = "unknown"
             if raw_source is not None and raw_type is not None:
-                # Future-proof for when fixtures supply both explicitly
-                source = str(raw_source).lower()
+                # Fully modern explicit format
                 event_type = str(raw_type).lower()
             else:
-                # Legacy fallback logic
-                # Fixture 'type' (e.g. NOTIFICATION) maps to canonical 'source'
-                source = str(raw_type or evt.get("source_type", "simulator")).lower()
-                event_type = "unknown"
-
                 # Semantic normalization heuristic based on fixture text
                 text_lower = event_text.lower()
                 if "deadline" in text_lower and ("changed" in text_lower or "moved" in text_lower):
