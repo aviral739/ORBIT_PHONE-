@@ -4,12 +4,13 @@
 CREATE TABLE events (
     event_id TEXT PRIMARY KEY,
     sequence_number INTEGER,
-    source_type TEXT NOT NULL,
+    source TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'unknown',
     event_text TEXT,
     timestamp DATETIME NOT NULL,
     evidence_metadata TEXT,
     processed_status TEXT DEFAULT 'PENDING',
-    office_kit_sync_status TEXT DEFAULT 'pending'
+    office_kit_sync_status TEXT DEFAULT 'not_applicable'
 );
 
 CREATE TABLE commitments (
@@ -32,12 +33,20 @@ CREATE TABLE commitment_evidence (
 
 CREATE TABLE conflicts (
     id TEXT PRIMARY KEY,
-    existing_commitment_id TEXT NOT NULL,
+    existing_commitment_id TEXT,
     new_description TEXT NOT NULL,
     message TEXT NOT NULL,
     status TEXT DEFAULT 'UNRESOLVED',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (existing_commitment_id) REFERENCES commitments(id) ON DELETE CASCADE
+);
+
+CREATE TABLE conflict_events (
+    conflict_id TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    PRIMARY KEY (conflict_id, event_id),
+    FOREIGN KEY (conflict_id) REFERENCES conflicts(id) ON DELETE CASCADE,
+    FOREIGN KEY (event_id) REFERENCES events(event_id) ON DELETE CASCADE
 );
 
 CREATE TABLE audit_log (
