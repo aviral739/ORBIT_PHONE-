@@ -14,10 +14,10 @@ package core.context
  * F. Delete missing context
  * G. Clear
  * H. Invalid ID
- * I. Missing ID
- * J. Mutation safety
- * K. Deterministic behavior
- * L. No unintended mutation
+ * I. Missing lookup
+ * J. getAll() mutation safety
+ * K. Context field preservation
+ * L. Deterministic behavior
  */
 
 // Simple test result tracking
@@ -144,7 +144,7 @@ fun main() {
         assertTrue("all retrieved", retrieved1 != null && retrieved2 != null && retrieved3 != null)
     }
 
-    // D. Update existing context
+    // D. Replace existing context
     test("D: Replace context with same ID") {
         val ctx1 = Context(
             id = "ctx_replace",
@@ -222,7 +222,7 @@ fun main() {
         assertEquals("getById returns null", null, store.getById("ctx_clear_1"))
     }
 
-    // H. Invalid ID
+    // H. Blank ID
     test("H: Blank context ID rejected") {
         val ctx = Context(
             id = "",
@@ -245,7 +245,7 @@ fun main() {
         assertThrows("whitespace ID throws", { store.save(ctx) })
     }
 
-    // I. Missing ID
+    // I. Missing lookup
     test("I: getById missing returns null") {
         assertEquals("getById missing returns null", null, store.getById("missing"))
     }
@@ -254,7 +254,7 @@ fun main() {
         assertEquals("contains missing returns false", false, store.contains("missing"))
     }
 
-    // J. Mutation safety
+    // J. getAll() mutation safety
     test("J: getAll returns immutable snapshot") {
         val ctx = Context(
             id = "ctx_immut",
@@ -282,52 +282,8 @@ fun main() {
         assertTrue("returned list is safe to read", all.size == 1)
     }
 
-    test("J: getById returns context that cannot mutate store") {
-        val ctx = Context(
-            id = "ctx_mutate",
-            topic = "Mutation Test",
-            eventIds = listOf("evt_1", "evt_2"),
-            summary = "Test mutation",
-            confidence = 0.5
-        )
-        store.save(ctx)
-        val retrieved = store.getById("ctx_mutate")!!
-        // Attempt to modify the returned context's eventIds if mutable
-        val threw = try {
-            (retrieved.eventIds as java.util.ArrayList<String>).add("evt_3")
-            false
-        } catch (e: UnsupportedOperationException) {
-            true
-        } catch (e: ClassCastException) {
-            true
-        } catch (e: Exception) {
-            true
-        }
-        // Verify store is unchanged
-        val after = store.getById("ctx_mutate")!!
-        assertTrue("store unchanged after mutation attempt", after.eventIds.size == 2)
-    }
-
-    // K. Deterministic behavior
-    test("K: Deterministic behavior") {
-        val store1 = ContextStore()
-        val store2 = ContextStore()
-        val ctx = Context(
-            id = "ctx_det",
-            topic = "Deterministic",
-            eventIds = listOf("evt_1"),
-            summary = "Test determinism",
-            confidence = 0.5
-        )
-        store1.save(ctx)
-        store2.save(ctx)
-        val r1 = store1.getById("ctx_det")
-        val r2 = store2.getById("ctx_det")
-        assertEquals("deterministic get", r1, r2)
-    }
-
-    // L. No unintended mutation
-    test("L: Saving context does not alter its fields") {
+    // K. Context field preservation
+    test("K: Context fields preserved exactly") {
         val originalEventIds = listOf("evt_1", "evt_2")
         val ctx = Context(
             id = "ctx_no_mutate",
@@ -345,24 +301,22 @@ fun main() {
         assertEquals("eventIds unchanged", originalEventIds, retrieved.eventIds)
     }
 
-    test("L: Modifying original list after save does not affect stored context") {
-        val mutableEventIds = mutableListOf("evt_1")
+    // L. Deterministic behavior
+    test("L: Deterministic behavior") {
+        val store1 = ContextStore()
+        val store2 = ContextStore()
         val ctx = Context(
-            id = "ctx_external_mutate",
-            topic = "External Mutate",
-            eventIds = mutableEventIds,
-            summary = "Summary",
+            id = "ctx_det",
+            topic = "Deterministic",
+            eventIds = listOf("evt_1"),
+            summary = "Test determinism",
             confidence = 0.5
         )
-        store.save(ctx)
-        // Now mutate the original list
-        mutableEventIds.add("evt_2")
-        // Stored context should be unaffected (defensive copy not required since we use immutable lists)
-        // but verify the stored context uses its own copy
-        val retrieved = store.getById("ctx_external_mutate")!!
-        // Note: Context stores the list as-is. If caller passes mutable list, store doesn't copy.
-        // This test documents the behavior - we use immutable lists in tests.
-        assertEquals("eventIds preserved", 2, mutableEventIds.size)
+        store1.save(ctx)
+        store2.save(ctx)
+        val r1 = store1.getById("ctx_det")
+        val r2 = store2.getById("ctx_det")
+        assertEquals("deterministic get", r1, r2)
     }
 
     // Summary

@@ -1,35 +1,7 @@
 package core.context
 
 /**
- * Represents a Context object per the ORBIT Context contract.
- *
- * Contract fields:
- * - id: Unique identifier for the context
- * - topic: Human-readable topic label
- * - eventIds: List of event IDs that contributed to this context
- * - summary: Human-readable summary of the context
- * - confidence: Confidence score in [0.0, 1.0]
- */
-data class Context(
-    val id: String,
-    val topic: String,
-    val eventIds: List<String>,
-    val summary: String,
-    val confidence: Double
-) {
-    init {
-        require(id.isNotBlank()) { "Context ID must not be blank" }
-        require(topic.isNotBlank()) { "Topic must not be blank" }
-        require(summary.isNotBlank()) { "Summary must not be blank" }
-        require(confidence in 0.0..1.0) { "Confidence must be between 0.0 and 1.0" }
-        require(eventIds.distinct().size == eventIds.size) { "Event IDs must not contain duplicates" }
-        require(eventIds.all { it.isNotBlank() }) { "Event IDs must not be blank" }
-    }
-}
-
-/**
  * In-memory ContextStore implementation.
- * Thread-safe using standard Kotlin/JVM synchronized collections.
  * No external dependencies.
  */
 class ContextStore {
@@ -40,9 +12,12 @@ class ContextStore {
      * Saves a context, replacing any existing context with the same ID.
      *
      * @param context The context to save
-     * @throws IllegalArgumentException if context fails validation
+     * @throws IllegalArgumentException if context ID is blank
      */
     fun save(context: Context): Unit {
+        if (context.id.isBlank()) {
+            throw IllegalArgumentException("Context ID must not be blank")
+        }
         store[context.id] = context
     }
 
@@ -80,7 +55,7 @@ class ContextStore {
     /**
      * Returns all stored contexts.
      *
-     * @return An immutable list of all contexts (callers cannot mutate internal collection)
+     * @return A copy of the stored contexts (callers cannot mutate internal collection)
      */
     fun getAll(): List<Context> {
         return store.values.toList()
