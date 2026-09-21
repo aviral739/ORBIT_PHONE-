@@ -11,57 +11,58 @@ data class EventIntent(
     val sourceId: String
 )
 
-data class Deadline(
-    val targetTime: Long?
-)
-
-data class Commitment(
-    val id: String,
-    val description: String,
-    val deadline: Deadline,
-    val sourceEvidenceIds: MutableList<String>,
-    var confidence: Float
-)
-
-data class Conflict(
-    val existingCommitmentId: String,
-    val newDescription: String,
-    val message: String
-)
-
 class StateEngine {
     private val activeCommitments = mutableMapOf<String, Commitment>()
 
-    fun processIntent(intent: EventIntent): Any {
-        // NEW: If matchedTaskId is null or not in activeCommitments
-        if (intent.matchedTaskId == null || !activeCommitments.containsKey(intent.matchedTaskId)) {
+    fun processIntent(intent: EventIntent): StateResult {
+        if (intent.matchedTaskId == null) {
             val newId = UUID.randomUUID().toString()
             val newCommitment = Commitment(
                 id = newId,
-                description = intent.description,
-                deadline = Deadline(intent.detectedTime),
-                sourceEvidenceIds = mutableListOf(intent.sourceId),
+                taskDescription = intent.description,
+                deadline = intent.detectedTime?.let {
+                    Deadline(
+                        originalTime = it,
+                        newTime = null,
+                        confidence = intent.confidence,
+                        sourceEvidenceIds = listOf(intent.sourceId)
+                    )
+                },
+                sourceEvidenceIds = if (intent.sourceId.isNotBlank()) mutableListOf(intent.sourceId) else mutableListOf(),
                 confidence = intent.confidence
             )
             activeCommitments[newId] = newCommitment
-            return newCommitment
+            return StateResult.Created(newCommitment)
+        }
+
+        if (!activeCommitments.containsKey(intent.matchedTaskId)) {
+            return StateResult.Error("Unknown matchedTaskId: ${intent.matchedTaskId}")
         }
 
         val existingCommitment = activeCommitments[intent.matchedTaskId]!!
+        val currentDeadlineTime = existingCommitment.deadline?.newTime ?: existingCommitment.deadline?.originalTime
 
-        // ACCUMULATE: If task exists AND detectedTime matches existing deadline
-        if (existingCommitment.deadline.targetTime == intent.detectedTime) {
-            existingCommitment.sourceEvidenceIds.add(intent.sourceId)
-            existingCommitment.confidence = (existingCommitment.confidence + intent.confidence) / 2.0f
-            return existingCommitment
-        } 
-        // CONFLICT: If task exists BUT detectedTime is different
-        else {
-            return Conflict(
-                existingCommitmentId = existingCommitment.id,
-                newDescription = intent.description,
-                message = "Time conflict detected: existing deadline is ${existingCommitment.deadline.targetTime}, new intent time is ${intent.detectedTime}"
-            )
+        // Explicitly handle intents with no deadline
+        if (currentDeadlineTime == null && intent.detectedTime == null) {
+            return StateResult.Unresolved("Cannot automatically merge intents with no deadlines")
         }
+
+        // ACCUMULATE: If detectedTime matches existing deadline
+        if (currentDeadlineTime == intent.detectedTime) {
+            if (intent.sourceId.isNotBlank() && !existingCommitment.sourceEvidenceIds.contains(intent.sourceId)) {
+                existingCommitment.sourceEvidenceIds.add(intent.sourceId)
+            }
+            existingCommitment.confidence = (existingCommitment.confidence + intent.confidence) / 2.0f
+            return StateResult.Updated(existingCommitment)
+        } 
+        
+        // CONFLICT: If detectedTime is different
+        return StateResult.ConflictDetected(
+            Conflict(
+                existingCommitmentId = existingCommitment.id,
+                newEvidenceId = intent.sourceId,
+                description = "Time conflict detected: existing deadline is $currentDeadlineTime, new intent time is ${intent.detectedTime}"
+            )
+        )
     }
 }
