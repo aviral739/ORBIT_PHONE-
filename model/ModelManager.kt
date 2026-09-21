@@ -8,30 +8,49 @@ sealed class ParsedModelResult {
 class ModelManager(private val inferenceEngine: LocalInference) {
 
     suspend fun processEvent(eventData: String): ParsedModelResult {
-        // Dummy system prompt for now
         val systemPrompt = "You are a helpful assistant. Parse the input into a structured intent."
-        
+
         val result = inferenceEngine.generateResponse(systemPrompt, eventData)
-        
+
         return when (result) {
             is InferenceResult.Success -> parseOutput(result.response)
             is InferenceResult.Failure -> ParsedModelResult.Error("Inference failed: ${result.reason}")
         }
     }
-    
+
     private fun parseOutput(rawOutput: String): ParsedModelResult {
-        // Very basic mock parser: expects format "INTENT: <name>, CONFIDENCE: <float>"
-        return try {
-            if (rawOutput.contains("INTENT:") && rawOutput.contains("CONFIDENCE:")) {
-                val intentPart = rawOutput.substringAfter("INTENT:").substringBefore(",").trim()
-                val confidencePart = rawOutput.substringAfter("CONFIDENCE:").trim()
-                val confidence = confidencePart.toFloat()
-                ParsedModelResult.Success(intentPart, confidence)
-            } else {
-                ParsedModelResult.Error("Parsing failed: malformed format")
+        try {
+            if (!rawOutput.contains("INTENT:") || !rawOutput.contains("CONFIDENCE:")) {
+                return ParsedModelResult.Error("Parsing failed: missing markers")
             }
+
+            val intentPart = rawOutput.substringAfter("INTENT:").substringBefore(",").trim()
+            if (intentPart.isEmpty()) {
+                return ParsedModelResult.Error("Parsing failed: empty intent")
+            }
+
+            val confidencePart = rawOutput.substringAfter("CONFIDENCE:").trim()
+            if (confidencePart.isEmpty()) {
+                return ParsedModelResult.Error("Parsing failed: empty confidence")
+            }
+
+            val confidence = try {
+                confidencePart.toFloat()
+            } catch (e: NumberFormatException) {
+                return ParsedModelResult.Error("Parsing failed: invalid confidence format")
+            }
+
+            if (confidence.isNaN() || confidence.isInfinite()) {
+                return ParsedModelResult.Error("Parsing failed: confidence is not finite")
+            }
+
+            if (confidence < 0.0f || confidence > 1.0f) {
+                return ParsedModelResult.Error("Parsing failed: confidence out of bounds")
+            }
+
+            return ParsedModelResult.Success(intentPart, confidence)
         } catch (e: Exception) {
-            ParsedModelResult.Error("Parsing failed: ${e.message ?: "unknown error"}")
+            return ParsedModelResult.Error("Parsing failed: unexpected error")
         }
     }
 }
