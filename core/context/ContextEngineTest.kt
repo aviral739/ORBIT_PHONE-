@@ -263,8 +263,8 @@ fun main() {
         assertEquals("empty list returned", 0, result.size)
     }
 
-    // M. Context matching does not depend on input ordering
-    test("M: Context matching independent of input order") {
+// M. Context matching does not depend on input ordering
+    test("M: Context matching independent of input ordering") {
         val store1 = ContextStore()
         val store2 = ContextStore()
         val engine1 = ContextEngine(store1)
@@ -291,6 +291,45 @@ fun main() {
         val ids1 = results1.map { it.id }.toSet()
         val ids2 = results2.map { it.id }.toSet()
         assertEquals("same context IDs regardless of order", ids1, ids2)
+    }
+
+    // N. Deterministic topic generation across fresh engines
+    test("N: Deterministic topic generation across fresh engines") {
+        val store1 = ContextStore()
+        val store2 = ContextStore()
+        val engine1 = ContextEngine(store1)
+        val engine2 = ContextEngine(store2)
+
+        val event = createEvent("evt_1", "Project deadline moved to Friday")
+        val context1 = engine1.processEvent(event)
+        val context2 = engine2.processEvent(event)
+
+        assertEquals("topic is deterministic", context1.topic, context2.topic) &&
+        assertEquals("summary is deterministic", context1.summary, context2.summary)
+    }
+
+    // O. Unrelated events with same event type do not merge
+    test("O: Unrelated events with same type do not merge") {
+        val store = ContextStore()
+        val engine = ContextEngine(store)
+        // Two events with same type but completely different content
+        val event1 = createEvent("evt_1", "Project deadline moved to Friday")
+        val event2 = createEvent("evt_2", "Birthday party scheduled for Saturday")
+
+        // Force same type
+        val event2Typed = Event(
+            id = "evt_2",
+            source = EventSource.NOTIFICATION,
+            type = "deadline_update",
+            text = "Birthday party scheduled for Saturday",
+            timestamp = baseTime
+        )
+
+        val context1 = engine.processEvent(event1)
+        val context2 = engine.processEvent(event2Typed)
+
+        assertEquals("different context IDs", context1.id != context2.id, true) &&
+        assertEquals("size is 2", 2, store.size())
     }
 
     // Summary

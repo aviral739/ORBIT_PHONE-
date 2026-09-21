@@ -13,7 +13,7 @@ import java.util.regex.Pattern
  * - Tokenize event text (lowercase, alphanumeric tokens)
  * - Compare token overlap with existing context topic/summary
  * - Use Jaccard-style similarity for deterministic matching
- * - Threshold: 0.25 minimum similarity for a match
+ * - Threshold: 0.25 minimum similarity for a match (must meet or exceed)
  *
  * Context ID strategy:
  * - Derived from normalized topic (lowercase, alphanumeric only)
@@ -31,7 +31,7 @@ class ContextEngine(
     companion object {
         /**
          * Minimum similarity threshold for considering an event related to an existing context.
-         * Jaccard similarity of token sets must exceed this value.
+         * Jaccard similarity of token sets must meet or exceed this value.
          */
         private const val MIN_SIMILARITY_THRESHOLD = 0.25
 
@@ -271,12 +271,16 @@ class ContextEngine(
             .joinToString(" ")
 
         if (typeTopic.isNotBlank()) {
-            return typeTopic.capitalize()
+            return typeTopic.replaceFirstChar { it.uppercase() }
         }
 
-        // Fallback: use first few tokens
-        val topicTokens = tokens.take(3).joinToString(" ")
-        return if (topicTopic.isNotBlank()) typeTopic.capitalize() else topicTopic.capitalize()
+        // Fallback: use first few tokens (sorted for determinism)
+        val topicTokens = tokens.sorted().take(3).joinToString(" ")
+        return if (topicTokens.isNotBlank()) {
+            topicTokens.replaceFirstChar { it.uppercase() }
+        } else {
+            ""
+        }
     }
 
     /**
@@ -286,7 +290,7 @@ class ContextEngine(
         // Use event type as primary topic signal
         val typeLower = event.type.lowercase()
         if (typeLower.isNotBlank()) {
-            return typeLower.replace("_", " ").replace("-", " ").capitalize()
+            return typeLower.replace("_", " ").replace("-", " ").replaceFirstChar { it.uppercase() }
         }
         return ""
     }
